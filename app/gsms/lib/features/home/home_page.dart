@@ -2,34 +2,98 @@ import 'package:flutter/material.dart';
 import 'package:gsms/app/theme_notifier.dart';
 import 'package:gsms/common/routes/app_routes.dart';
 import 'package:gsms/common/widgets/feature_button.dart';
+import 'package:gsms/features/home/widgets/update_data_modal.dart';
 import 'package:provider/provider.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gestão de Materiais de Construção'),
         actions: [
-          PopupMenuButton<ThemeMode>(
-            onSelected: (ThemeMode mode) {
-              Provider.of<ThemeNotifier>(context, listen: false)
-                  .setThemeMode(mode);
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (String result) {
+              // Lógica para 'Conta' e 'Sair'
+              switch (result) {
+                case 'atualizar_dados':
+                  showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return const UpdateDataModal();
+                    },
+                  );
+                  break;
+                case 'conta':
+                  // TODO: Implementar navegação para a página da conta
+                  print('Página de conta selecionada.');
+                  break;
+                case 'sair':
+                  // TODO: Implementar lógica de logout
+                  print('Sair selecionado.');
+                  break;
+              }
             },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<ThemeMode>>[
-              const PopupMenuItem<ThemeMode>(
-                value: ThemeMode.light,
-                child: Text('Light Mode'),
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'tema',
+                mouseCursor: SystemMouseCursors.click,
+                child: Consumer<ThemeNotifier>(
+                  builder: (context, themeNotifier, child) {
+                    final isDarkMode =
+                        themeNotifier.themeMode == ThemeMode.dark;
+                    return SwitchListTile(
+                      title: Text(isDarkMode ? 'Dark' : 'Light'),
+                      secondary: Icon(isDarkMode
+                          ? Icons.dark_mode
+                          : Icons.light_mode),
+                      value: isDarkMode,
+                      onChanged: (bool value) {
+                        themeNotifier.setThemeMode(
+                            value ? ThemeMode.dark : ThemeMode.light);
+                        Navigator.pop(
+                            context); // Fecha o menu ao alterar o tema
+                      },
+                    );
+                  },
+                ),
               ),
-              const PopupMenuItem<ThemeMode>(
-                value: ThemeMode.dark,
-                child: Text('Dark Mode'),
+              const PopupMenuDivider(),
+              PopupMenuItem<String>(
+                value: 'atualizar_dados',
+                mouseCursor: SystemMouseCursors.click,
+                child: const ListTile(
+                  leading: Icon(Icons.sync),
+                  title: Text('Atualizar Dados'),
+                  mouseCursor: SystemMouseCursors.click,
+                ),
               ),
-              const PopupMenuItem<ThemeMode>(
-                value: ThemeMode.system,
-                child: Text('System Default'),
+              const PopupMenuDivider(),
+              PopupMenuItem<String>(
+                value: 'conta',
+                mouseCursor: SystemMouseCursors.click,
+                child: const ListTile(
+                  leading: Icon(Icons.person_outline),
+                  title: Text('Conta'),
+                  mouseCursor: SystemMouseCursors.click,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'sair',
+                mouseCursor: SystemMouseCursors.click,
+                child: const ListTile(
+                  leading: Icon(Icons.exit_to_app),
+                  title: Text('Sair'),
+                  mouseCursor: SystemMouseCursors.click,
+                ),
               ),
             ],
           ),

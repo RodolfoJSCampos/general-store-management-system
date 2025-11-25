@@ -17,6 +17,7 @@ class FeatureButton extends StatelessWidget {
     return Card(
       elevation: 2,
       child: InkWell(
+        borderRadius: BorderRadius.circular(12.0),
         onTap: () {
           Navigator.pushNamed(context, routeName);
         },
