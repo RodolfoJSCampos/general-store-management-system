@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:gsms/features/home/domain/models/database_info.dart'; // Import the new class
 import 'package:gsms/features/home/widgets/import_clients_csv_modal.dart';
 import 'package:gsms/features/home/widgets/import_costs_csv_modal.dart';
 import 'package:gsms/features/home/widgets/import_csv_modal.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 
+/// A modal dialog for updating various data bases (prices, clients, costs).
+/// It displays the last update time for each database and provides buttons to trigger the update process.
 class UpdateDataModal extends StatefulWidget {
   const UpdateDataModal({super.key});
 
@@ -13,6 +16,7 @@ class UpdateDataModal extends StatefulWidget {
 }
 
 class _UpdateDataModalState extends State<UpdateDataModal> {
+  // State variables to hold the last update timestamps for each database.
   String _priceBaseLastUpdate = 'Nunca';
   String _clientBaseLastUpdate = 'Nunca';
   String _costBaseLastUpdate = 'Nunca';
@@ -23,9 +27,13 @@ class _UpdateDataModalState extends State<UpdateDataModal> {
     _loadLastUpdate();
   }
 
+  /// Loads the last update timestamps for price, client, and cost bases from Hive.
+  /// Updates the UI state with the retrieved information.
   Future<void> _loadLastUpdate() async {
-    final metadataBox = await Hive.openBox('metadata');
+    // Access the metadata box directly as it's already opened at app startup.
+    final metadataBox = Hive.box('metadata');
 
+    // Retrieve and format the last update time for the price base.
     final priceLastUpdate = metadataBox.get('price_base_last_update') as String?;
     if (priceLastUpdate != null && mounted) {
       final dateTime = DateTime.parse(priceLastUpdate);
@@ -35,6 +43,7 @@ class _UpdateDataModalState extends State<UpdateDataModal> {
       });
     }
 
+    // Retrieve and format the last update time for the client base.
     final clientLastUpdate = metadataBox.get('client_base_last_update') as String?;
     if (clientLastUpdate != null && mounted) {
       final dateTime = DateTime.parse(clientLastUpdate);
@@ -44,6 +53,7 @@ class _UpdateDataModalState extends State<UpdateDataModal> {
       });
     }
 
+    // Retrieve and format the last update time for the cost base.
     final costLastUpdate = metadataBox.get('cost_base_last_update') as String?;
     if (costLastUpdate != null && mounted) {
       final dateTime = DateTime.parse(costLastUpdate);
@@ -54,32 +64,70 @@ class _UpdateDataModalState extends State<UpdateDataModal> {
     }
   }
 
+  /// Handles the action when an update button is pressed for a specific database.
+  /// Shows the corresponding CSV import modal and reloads the update timestamps upon completion.
+  void _handleUpdatePressed(DatabaseInfo db) {
+    if (db.name == 'Base de Preços') {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return const ImportCsvModal();
+        },
+      ).then((_) => _loadLastUpdate());
+    } else if (db.name == 'Banco de Dados de Clientes') {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return const ImportClientsCsvModal();
+        },
+      ).then((_) => _loadLastUpdate());
+    } else if (db.name == 'Base de Custos') {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return const ImportCostsCsvModal();
+        },
+      ).then((_) => _loadLastUpdate());
+    } else {
+      // Fallback for any other database types, showing a simple snackbar message.
+      debugPrint('Atualizando ${db.name}...');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Atualizando ${db.name}...'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final priceBaseDb = {
-      'name': 'Base de Preços',
-      'lastUpdate': _priceBaseLastUpdate,
-      'icon': Icons.attach_money
-    };
+    // Define the database information using the new DatabaseInfo class.
+    final priceBaseDb = DatabaseInfo(
+      name: 'Base de Preços',
+      lastUpdate: _priceBaseLastUpdate,
+      icon: Icons.attach_money,
+    );
 
-    final clientBaseDb = {
-      'name': 'Banco de Dados de Clientes',
-      'lastUpdate': _clientBaseLastUpdate,
-      'icon': Icons.people
-    };
+    final clientBaseDb = DatabaseInfo(
+      name: 'Banco de Dados de Clientes',
+      lastUpdate: _clientBaseLastUpdate,
+      icon: Icons.people,
+    );
 
-    final costBaseDb = {
-      'name': 'Base de Custos',
-      'lastUpdate': _costBaseLastUpdate,
-      'icon': Icons.monetization_on
-    };
+    final costBaseDb = DatabaseInfo(
+      name: 'Base de Custos',
+      lastUpdate: _costBaseLastUpdate,
+      icon: Icons.monetization_on,
+    );
 
-    final databases = [priceBaseDb, clientBaseDb, costBaseDb];
+    final List<DatabaseInfo> databases = [priceBaseDb, clientBaseDb, costBaseDb];
 
     return AlertDialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16.0),
       ),
+      // Use withValues for compatibility with older deprecated withOpacity.
       backgroundColor: Theme.of(context).colorScheme.surface.withValues(alpha: 0.95),
       title: Row(
         children: [
@@ -108,15 +156,15 @@ class _UpdateDataModalState extends State<UpdateDataModal> {
               ),
               child: ListTile(
                 leading: Icon(
-                  db['icon'] as IconData,
+                  db.icon, // Access icon directly from DatabaseInfo object
                   color: Theme.of(context).colorScheme.secondary,
                 ),
                 title: Text(
-                  db['name'] as String,
+                  db.name, // Access name directly from DatabaseInfo object
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  'Última atualização: ${db['lastUpdate']}',
+                  'Última atualização: ${db.lastUpdate}', // Access lastUpdate directly
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
@@ -124,39 +172,7 @@ class _UpdateDataModalState extends State<UpdateDataModal> {
                 trailing: ElevatedButton.icon(
                   icon: const Icon(Icons.sync),
                   label: const Text('Atualizar'),
-                  onPressed: () {
-                    if (db['name'] == 'Base de Preços') {
-                      showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return const ImportCsvModal();
-                        },
-                      ).then((_) => _loadLastUpdate());
-                    } else if (db['name'] == 'Banco de Dados de Clientes') {
-                      showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return const ImportClientsCsvModal();
-                        },
-                      ).then((_) => _loadLastUpdate());
-                    } else if (db['name'] == 'Base de Custos') {
-                      showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return const ImportCostsCsvModal();
-                        },
-                      ).then((_) => _loadLastUpdate());
-                    } else {
-                      // TODO: Implementar lógica de atualização individual
-                      print('Atualizando ${db['name']}...');
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Atualizando ${db['name']}...'),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  },
+                  onPressed: () => _handleUpdatePressed(db), // Use the new handler method
                   style: ElevatedButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8.0),

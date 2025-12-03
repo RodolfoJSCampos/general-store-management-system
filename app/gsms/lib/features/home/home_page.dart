@@ -13,6 +13,31 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  /// Handles the selection of items from the app bar's popup menu.
+  /// This method centralizes the logic for navigation, showing modals,
+  /// and performing actions like theme changes or logout.
+  void _handlePopupMenuSelection(String result) {
+    switch (result) {
+      case 'atualizar_dados':
+        // Displays a modal for updating various data bases (prices, clients, costs).
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return const UpdateDataModal();
+          },
+        );
+        break;
+      case 'conta':
+        // TODO: Implementar navegação para a página da conta
+        debugPrint('Página de conta selecionada.');
+        break;
+      case 'sair':
+        // TODO: Implementar lógica de logout
+        debugPrint('Sair selecionado.');
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -21,28 +46,9 @@ class _HomePageState extends State<HomePage> {
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
-            onSelected: (String result) {
-              // Lógica para 'Conta' e 'Sair'
-              switch (result) {
-                case 'atualizar_dados':
-                  showDialog(
-                    context: context,
-                    builder: (BuildContext context) {
-                      return const UpdateDataModal();
-                    },
-                  );
-                  break;
-                case 'conta':
-                  // TODO: Implementar navegação para a página da conta
-                  print('Página de conta selecionada.');
-                  break;
-                case 'sair':
-                  // TODO: Implementar lógica de logout
-                  print('Sair selecionado.');
-                  break;
-              }
-            },
+            onSelected: _handlePopupMenuSelection, // Use the extracted method
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              // Menu item for theme selection (Dark/Light mode).
               PopupMenuItem<String>(
                 value: 'tema',
                 mouseCursor: SystemMouseCursors.click,
@@ -60,13 +66,14 @@ class _HomePageState extends State<HomePage> {
                         themeNotifier.setThemeMode(
                             value ? ThemeMode.dark : ThemeMode.light);
                         Navigator.pop(
-                            context); // Fecha o menu ao alterar o tema
+                            context); // Close the menu when changing the theme
                       },
                     );
                   },
                 ),
               ),
               const PopupMenuDivider(),
+              // Menu item to open the data update modal.
               PopupMenuItem<String>(
                 value: 'atualizar_dados',
                 mouseCursor: SystemMouseCursors.click,
@@ -77,6 +84,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const PopupMenuDivider(),
+              // Menu item for 'Account' related actions.
               PopupMenuItem<String>(
                 value: 'conta',
                 mouseCursor: SystemMouseCursors.click,
@@ -86,6 +94,7 @@ class _HomePageState extends State<HomePage> {
                   mouseCursor: SystemMouseCursors.click,
                 ),
               ),
+              // Menu item for 'Logout' action.
               PopupMenuItem<String>(
                 value: 'sair',
                 mouseCursor: SystemMouseCursors.click,
@@ -101,6 +110,9 @@ class _HomePageState extends State<HomePage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
+          // Calculates the number of columns and aspect ratio for a responsive grid layout
+          // based on the screen's width and height. This ensures optimal display
+          // in both portrait and landscape orientations for desktop applications.
           const int itemCount = 6;
           const double padding = 16;
           final double screenWidth = constraints.maxWidth;
@@ -110,17 +122,17 @@ class _HomePageState extends State<HomePage> {
           double childAspectRatio;
 
           if (screenWidth < screenHeight) {
-            // Portrait or square
+            // Portrait or square orientation: use 2 columns and square items
             crossAxisCount = 2;
             double itemWidth =
                 (screenWidth - (crossAxisCount + 1) * padding) / crossAxisCount;
-            childAspectRatio = itemWidth / itemWidth;
+            childAspectRatio = itemWidth / itemWidth; // Items are square
           } else {
-            // Landscape
+            // Landscape orientation: use 3 columns and wider items to fit content
             crossAxisCount = 3;
             double itemWidth =
                 (screenWidth - (crossAxisCount + 1) * padding) / crossAxisCount;
-            double itemHeight = (screenHeight - 3 * padding) / 2;
+            double itemHeight = (screenHeight - 3 * padding) / 2; // Assuming 2 rows in landscape
             childAspectRatio = itemWidth / itemHeight;
           }
 

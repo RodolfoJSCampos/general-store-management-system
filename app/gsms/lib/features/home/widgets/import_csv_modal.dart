@@ -2,11 +2,14 @@ import 'dart:convert';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:gsms/features/home/domain/models/price_base_model.dart';
 import 'package:hive/hive.dart';
 
+/// A modal dialog for importing CSV data into the Price Base.
+/// It handles file selection, CSV parsing, header mapping, data parsing,
+/// and saving the processed data to Hive.
 class ImportCsvModal extends StatefulWidget {
   const ImportCsvModal({super.key});
 
@@ -32,6 +35,9 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
     'Preço Mínimo',
   ];
 
+  /// Initiates the file picking process, allowing the user to select a CSV file.
+  /// If a file is successfully picked, its name and byte content are stored,
+  /// and the CSV headers are loaded for mapping.
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -48,6 +54,9 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
     }
   }
 
+  /// Normalizes a string by converting it to lowercase, removing common Brazilian
+  /// Portuguese diacritics, and replacing non-alphanumeric characters with spaces.
+  /// This is used to improve the accuracy of Jaccard similarity for header mapping.
   String _normalizeString(String input) {
     var str = input.toLowerCase();
     var withDia = 'áàâãéèêíìîóòôõúùûç';
@@ -60,6 +69,8 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
     return str;
   }
 
+  /// Calculates the Jaccard similarity coefficient between two strings.
+  /// Used for automated header mapping.
   double _calculateJaccardSimilarity(String a, String b) {
     final normA = _normalizeString(a);
     final normB = _normalizeString(b);
@@ -81,6 +92,9 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
     return intersection / union;
   }
 
+  /// Loads and parses CSV headers from the selected file.
+  /// It attempts to automatically map required fields to CSV columns based on Jaccard similarity
+  /// and predefined aliases.
   Future<void> _loadCsvHeaders() async {
     if (_fileBytes == null) return;
 
@@ -93,6 +107,7 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
     }
 
     final firstLine = csvString.trim().split('\n').first;
+    // Determine delimiter based on which one results in more fields.
     final delimiter =
         (firstLine.split(',').length > firstLine.split(';').length) ? ',' : ';';
 
@@ -117,6 +132,7 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
         }
       }
 
+      // Predefined aliases for required fields to improve mapping accuracy.
       final Map<String, List<String>> requiredFieldAliases = {
         'Preço a Vista': ['preço venda 01'],
         'Preço a Prazo': ['preço venda 02'],
@@ -124,11 +140,13 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
         'Preço Mínimo': ['preço venda 04'],
       };
 
+      // Boost scores for alias matches.
       for (final mapping in potentialMappings) {
         final field = mapping['field'];
         if (requiredFieldAliases.containsKey(field)) {
           final normalizedHeader = _normalizeString(mapping['header']);
           if (requiredFieldAliases[field]!.contains(normalizedHeader)) {
+            // Give a high score for alias matches to prioritize them.
             if (mapping['score'] < 0.9) {
                 mapping['score'] = 0.9;
             }
@@ -136,11 +154,13 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
         }
       }
 
+      // Sort potential mappings by score in descending order to prioritize best matches.
       potentialMappings.sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
 
       final mappedFields = <String>{};
       final mappedHeaders = <String>{};
 
+      // Assign mappings, ensuring no field or header is mapped twice.
       for (final mapping in potentialMappings) {
         final field = mapping['field'];
         final header = mapping['header'];
@@ -152,6 +172,8 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
         }
       }
 
+      // Fallback for any required fields that are still unmapped.
+      // Tries to assign any remaining unused header.
       for (var field in _requiredFields) {
         if (!_columnMapping.containsKey(field)) {
           final remainingHeader = availableHeaders.firstWhere((h) => !mappedHeaders.contains(h), orElse: () => '');
@@ -164,19 +186,23 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
     });
   }
 
+  /// Parses a price string into a double, handling currency symbols,
+  /// thousand separators, and decimal separators.
   double _parsePrice(String priceString) {
     if (priceString.isEmpty) {
       return 0.0;
     }
     final cleanedString = priceString
-        .replaceAll('R\$', '')
+        .replaceAll('R\$', '') // Remove currency symbol
         .trim()
-        .replaceAll('.', '')
-        .replaceAll(',', '.');
+        .replaceAll('.', '') // Remove thousand separator
+        .replaceAll(',', '.'); // Replace decimal comma with dot
 
     return double.tryParse(cleanedString) ?? 0.0;
   }
 
+  /// Imports the parsed CSV data into the Hive 'price_base' box.
+  /// It also updates the 'price_base_last_update' timestamp in the 'metadata' box.
   Future<void> _importData() async {
     if (_isLoading) return;
 
@@ -198,6 +224,7 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
       }
 
       final firstLine = csvString.trim().split('\n').first;
+      // Determine delimiter based on which one results in more fields.
       final delimiter =
           (firstLine.split(',').length > firstLine.split(';').length) ? ',' : ';';
 
@@ -220,25 +247,22 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
       final Map<String, PriceBaseModel> pricesToPut = {};
       for (int i = 1; i < fields.length; i++) {
         final row = fields[i];
+        // Create a new PriceBaseModel from the CSV row using the column mapping.
         final newPriceBase = PriceBaseModel()
-          ..code = row[headers.indexOf(_columnMapping['Código']!)].toString()
-          ..description =
-              row[headers.indexOf(_columnMapping['Descrição']!)].toString()
-          ..brand = row[headers.indexOf(_columnMapping['Marca']!)].toString()
-          ..cashPrice = _parsePrice(
-              row[headers.indexOf(_columnMapping['Preço a Vista']!)].toString())
-          ..installmentPrice = _parsePrice(
-              row[headers.indexOf(_columnMapping['Preço a Prazo']!)].toString())
-          ..tenTimesPrice = _parsePrice(
-              row[headers.indexOf(_columnMapping['Preço 10X']!)].toString())
-          ..minimumPrice = _parsePrice(
-              row[headers.indexOf(_columnMapping['Preço Mínimo']!)].toString());
+          ..code = _getValueFromRow(row, headers, 'Código')
+          ..description = _getValueFromRow(row, headers, 'Descrição')
+          ..brand = _getValueFromRow(row, headers, 'Marca')
+          ..cashPrice = _parsePrice(_getValueFromRow(row, headers, 'Preço a Vista'))
+          ..installmentPrice = _parsePrice(_getValueFromRow(row, headers, 'Preço a Prazo'))
+          ..tenTimesPrice = _parsePrice(_getValueFromRow(row, headers, 'Preço 10X'))
+          ..minimumPrice = _parsePrice(_getValueFromRow(row, headers, 'Preço Mínimo'));
         pricesToPut[newPriceBase.code] = newPriceBase;
       }
 
       await box.putAll(pricesToPut);
 
-      final metadataBox = await Hive.openBox('metadata');
+      // Update the last update timestamp in the metadata box.
+      final metadataBox = Hive.box('metadata'); // Access directly
       await metadataBox.put('price_base_last_update', DateTime.now().toIso8601String());
 
       if (mounted) {
@@ -270,6 +294,23 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
     }
   }
 
+  /// Helper method to safely get a value from a CSV row based on a mapped field name.
+  /// Returns an empty string if the field is not mapped or the index is out of bounds.
+  String _getValueFromRow(List<dynamic> row, List<String> headers, String fieldName) {
+    final headerName = _columnMapping[fieldName];
+    if (headerName == null) {
+      debugPrint('Warning: Field "$fieldName" is not mapped.');
+      return '';
+    }
+    final index = headers.indexOf(headerName);
+    if (index == -1 || index >= row.length) {
+      debugPrint('Warning: Header "$headerName" for field "$fieldName" not found in CSV row or index out of bounds. Row length: ${row.length}');
+      return '';
+    }
+    return row[index].toString();
+  }
+
+  /// Builds the view for picking a CSV file.
   Widget _buildFilePickerView() {
     return Column(
       children: [
@@ -277,10 +318,10 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.2),
+            color: Theme.of(context).colorScheme.secondaryContainer.withAlpha(51),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+              color: Theme.of(context).colorScheme.onSurface.withAlpha(102),
               width: 2,
             ),
           ),
@@ -302,7 +343,7 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
                 'O arquivo deve conter as colunas: Código, Descrição, Marca, e os preços.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
                 ),
               ),
               const SizedBox(height: 24),
@@ -324,6 +365,7 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
     );
   }
 
+  /// Returns a list of required fields that are mapped to the given CSV header.
   List<String> _getFieldsForHeader(String header) {
     return _columnMapping.entries
         .where((entry) => entry.value == header)
@@ -331,6 +373,7 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
         .toList();
   }
 
+  /// Builds the view that displays the selected file and allows column mapping confirmation.
   Widget _buildColumnMappingView(String fileName) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,11 +386,11 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
         const SizedBox(height: 8),
         Card(
           elevation: 0,
-          color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.2),
+          color: Theme.of(context).colorScheme.secondaryContainer.withAlpha(51),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
             side: BorderSide(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+              color: Theme.of(context).colorScheme.onSurface.withAlpha(51),
             ),
           ),
           child: ListTile(
@@ -387,15 +430,27 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _requiredFields.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final field = _requiredFields[index];
               final isConfirmed = _confirmedFields.contains(field);
               final selectedHeader = _columnMapping[field];
 
               if (selectedHeader == null) {
-                return const SizedBox
-                    .shrink(); // Retorna um widget vazio se o cabeçalho não for encontrado
+                // If a required field is not mapped, display a placeholder or specific message.
+                // This scenario should ideally be prevented by the mapping logic,
+                // or flagged more clearly to the user.
+                return Card(
+                  elevation: 0,
+                  color: Theme.of(context).colorScheme.errorContainer.withAlpha(51),
+                  child: ListTile(
+                    title: Text(
+                      'Campo obrigatório "$field" não mapeado.',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                    trailing: const Icon(Icons.error, color: Colors.red),
+                  ),
+                );
               }
               final fieldsForThisHeader = _getFieldsForHeader(selectedHeader);
               final isDuplicate = fieldsForThisHeader.length > 1;
@@ -407,13 +462,19 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
                   side: BorderSide(
                     color: isDuplicate
                         ? Colors.orange.shade300
-                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
+                        : Theme.of(context).colorScheme.onSurface.withAlpha(26),
                     width: 1,
                   ),
                 ),
-                color: isDuplicate ? Colors.orange.withOpacity(0.05) : Colors.transparent,
+                color: isDuplicate ? Colors.orange.withAlpha(13) : Colors.transparent,
                 child: ListTile(
-                  title: Text(field, style: const TextStyle(fontWeight: FontWeight.w500)),
+                  title: Text(
+                    field,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                    maxLines: 1, // Ensure text stays on a single line
+                    softWrap: false, // Prevent wrapping
+                    overflow: TextOverflow.fade, // Apply fade effect on overflow
+                  ),
                   trailing: SizedBox(
                     width: 350,
                     child: Row(
@@ -429,12 +490,16 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
                           child: SizedBox(
                             height: 36,
                             child: DropdownButtonFormField<String>(
-                              value: selectedHeader,
+                              initialValue: selectedHeader,
                               isDense: true,
                               items: _csvHeaders.map((header) {
                                 return DropdownMenuItem<String>(
                                   value: header,
-                                  child: Text(header, overflow: TextOverflow.ellipsis),
+                                  child: Text(
+                                    header,
+                                    overflow: TextOverflow.fade, // Apply fade effect on overflow
+                                    softWrap: false, // Ensure text does not wrap
+                                  ),
                                 );
                               }).toList(),
                               onChanged: (value) {
@@ -487,7 +552,9 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
     final uniqueMappedValues = mappedValues.toSet();
     final hasDuplicates = mappedValues.length != uniqueMappedValues.length;
 
+    // Check if all required fields are mapped and confirmed.
     final allConfirmed = _csvHeaders.isEmpty || _confirmedFields.length == _requiredFields.length;
+    // The import button is enabled only if all fields are confirmed and there are no duplicate mappings.
     final canImport = allConfirmed && !hasDuplicates;
 
     return AlertDialog(
@@ -530,9 +597,9 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (fileName == null)
-                  _buildFilePickerView()
+                  _buildFilePickerView() // Display file picker if no file is selected.
                 else
-                  _buildColumnMappingView(fileName),
+                  _buildColumnMappingView(fileName), // Display column mapping if a file is selected.
 
                 if (_csvHeaders.isNotEmpty) ...[
                   const SizedBox(height: 24),
@@ -560,6 +627,7 @@ class _ImportCsvModalState extends State<ImportCsvModal> {
                   ),
                   if (!canImport) ...[
                     const SizedBox(height: 8),
+                    // Display warnings if not all fields are confirmed or if there are duplicate mappings.
                     if (!allConfirmed)
                       Text(
                         'Confirme todos os mapeamentos para continuar.',

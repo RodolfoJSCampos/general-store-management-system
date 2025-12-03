@@ -1,12 +1,15 @@
 import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart'; // For Uint8List and debugPrint
+
 import 'package:flutter/material.dart';
 import 'package:gsms/features/home/domain/models/client_base_model.dart';
 import 'package:hive/hive.dart';
 
+/// A modal dialog for importing client data from a CSV file.
+/// It provides functionality for file selection, CSV parsing,
+/// automated and manual column mapping, and saving data to Hive.
 class ImportClientsCsvModal extends StatefulWidget {
   const ImportClientsCsvModal({super.key});
 
@@ -15,6 +18,7 @@ class ImportClientsCsvModal extends StatefulWidget {
 }
 
 class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
+  // State variables to manage the import process UI and data.
   bool _isLoading = false;
   String? _fileName;
   Uint8List? _fileBytes;
@@ -22,6 +26,7 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
   final Map<String, String> _columnMapping = {};
   final Set<String> _confirmedFields = <String>{};
 
+  // Define the required fields for the Client Base data model.
   final List<String> _requiredFields = [
     'Código',
     'Razão Social',
@@ -31,6 +36,9 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
     'Bloqueio Financeiro',
   ];
 
+  /// Initiates the file picking process, allowing the user to select a CSV file.
+  /// If a file is successfully picked, its name and byte content are stored,
+  /// and the CSV headers are loaded for mapping.
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -47,6 +55,9 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
     }
   }
 
+  /// Normalizes a string by converting it to lowercase, removing common Brazilian
+  /// Portuguese diacritics, and replacing non-alphanumeric characters with spaces.
+  /// This is used to improve the accuracy of Jaccard similarity for header mapping.
   String _normalizeString(String input) {
     var str = input.toLowerCase();
     var withDia = 'áàâãéèêíìîóòôõúùûç';
@@ -55,10 +66,13 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
     for (int i = 0; i < withDia.length; i++) {
       str = str.replaceAll(withDia[i], withoutDia[i]);
     }
-    str = str.replaceAll(RegExp(r'[^a-z0-9\s]'), ' ');
+    str = str.replaceAll(RegExp(r'[^a-z0-9\s]'), ' '); // Remove special characters
     return str;
   }
 
+  /// Calculates the Jaccard similarity coefficient between two strings.
+  /// This metric is used to determine how similar two sets of words are,
+  /// which helps in automatically mapping CSV headers to required fields.
   double _calculateJaccardSimilarity(String a, String b) {
     final normA = _normalizeString(a);
     final normB = _normalizeString(b);
@@ -74,24 +88,28 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
     final union = wordsA.union(wordsB).length;
 
     if (union == 0) {
-      return 0.0;
+      return 0.0; // Avoid division by zero if both sets are empty after normalization
     }
 
     return intersection / union;
   }
 
+  /// Loads the CSV headers from the selected file and attempts to automatically
+  /// map them to the [_requiredFields] using Jaccard similarity.
+  /// The user can then confirm or adjust these mappings.
   Future<void> _loadCsvHeaders() async {
     if (_fileBytes == null) return;
 
     final bytes = _fileBytes!;
     String csvString;
     try {
-      csvString = utf8.decode(bytes);
+      csvString = utf8.decode(bytes); // Try UTF-8 first
     } on FormatException {
-      csvString = latin1.decode(bytes);
+      csvString = latin1.decode(bytes); // Fallback to Latin-1
     }
 
     final firstLine = csvString.trim().split('\n').first;
+    // Auto-detect delimiter: comma or semicolon
     final delimiter =
         (firstLine.split(',').length > firstLine.split(';').length) ? ',' : ';';
 
@@ -116,17 +134,18 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
         }
       }
 
-
-
+      // Sort potential mappings by score in descending order to prioritize best matches.
       potentialMappings.sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
 
-      final mappedFields = <String>{};
-      final mappedHeaders = <String>{};
+      final mappedFields = <String>{}; // Track fields that have been mapped
+      final mappedHeaders = <String>{}; // Track headers that have been used
 
+      // Assign the highest-scoring unique mappings.
       for (final mapping in potentialMappings) {
         final field = mapping['field'];
         final header = mapping['header'];
 
+        // Ensure both the field and the header haven't been mapped yet.
         if (!mappedFields.contains(field) && !mappedHeaders.contains(header)) {
           _columnMapping[field] = header;
           mappedFields.add(field);
@@ -134,6 +153,8 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
         }
       }
 
+      // Fallback for any required fields that are still unmapped.
+      // Tries to assign any remaining unused header.
       for (var field in _requiredFields) {
         if (!_columnMapping.containsKey(field)) {
           final remainingHeader = availableHeaders.firstWhere((h) => !mappedHeaders.contains(h), orElse: () => '');
@@ -146,117 +167,135 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
     });
   }
 
+  /// Parses a string value into a double, handling common number formatting
+  /// including currency symbols (R$), thousand separators (.), and decimal commas (,).
   double _parseDouble(String value) {
     if (value.isEmpty) {
       return 0.0;
     }
     final cleanedString = value
-        .replaceAll('R\$', '')
+        .replaceAll('R\$', '') // Remove currency symbol
         .trim()
-        .replaceAll('.', '')
-        .replaceAll(',', '.');
+        .replaceAll('.', '') // Remove thousand separator
+        .replaceAll(',', '.'); // Replace decimal comma with dot for parsing
 
     return double.tryParse(cleanedString) ?? 0.0;
   }
 
+  /// Parses a string value into a boolean.
+  /// Recognizes 'sim' or 'true' (case-insensitive) as true.
   bool _parseBool(String value) {
     final lowerValue = value.toLowerCase().trim();
     return lowerValue == 'sim' || lowerValue == 'true';
   }
 
-    Future<void> _importData() async {
-      if (_isLoading) return;
-  
-      setState(() {
-        _isLoading = true;
-      });
-  
+  /// Imports the parsed and mapped client data into the Hive 'client_base' box.
+  /// It also updates the 'client_base_last_update' timestamp in the 'metadata' box.
+  Future<void> _importData() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      if (_fileBytes == null) return;
+
+      final box = Hive.box<ClientBaseModel>('client_base');
+
+      final bytes = _fileBytes!;
+      String csvString;
       try {
-        if (_fileBytes == null) return;
-  
-        final box = Hive.box<ClientBaseModel>('client_base');
-  
-        final bytes = _fileBytes!;
-        String csvString;
-        try {
-          csvString = utf8.decode(bytes);
-        } on FormatException {
-          csvString = latin1.decode(bytes);
-        }
-  
-        final firstLine = csvString.trim().split('\n').first;
-        final delimiter =
-            (firstLine.split(',').length > firstLine.split(';').length) ? ',' : ';';
-  
-        final List<List<dynamic>> fields =
-            CsvToListConverter(fieldDelimiter: delimiter).convert(csvString);
-  
-        if (fields.isEmpty) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Arquivo CSV vazio ou inválido.'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-          return;
-        }
-  
-        final headers = fields.first.map((e) => e.toString()).toList();
-        final Map<String, ClientBaseModel> clientsToPut = {};
-        for (int i = 1; i < fields.length; i++) {
-          final row = fields[i];
-          final newClientBase = ClientBaseModel()
-            ..code = row[headers.indexOf(_columnMapping['Código']!)].toString()
-            ..legalName =
-                row[headers.indexOf(_columnMapping['Razão Social']!)].toString()
-            ..tradeName =
-                row[headers.indexOf(_columnMapping['Nome Fantasia']!)].toString()
-            ..notes =
-                row[headers.indexOf(_columnMapping['Observação']!)].toString()
-            ..creditLimit = _parseDouble(
-                row[headers.indexOf(_columnMapping['Limite de Crédito']!)]
-                    .toString())
-            ..isBlocked = _parseBool(
-                row[headers.indexOf(_columnMapping['Bloqueio Financeiro']!)]
-                    .toString());
-          clientsToPut[newClientBase.code] = newClientBase;
-        }
-  
-        await box.putAll(clientsToPut);
-  
-        final metadataBox = await Hive.openBox('metadata');
-        await metadataBox.put('client_base_last_update', DateTime.now().toIso8601String());
-  
+        csvString = utf8.decode(bytes);
+      } on FormatException {
+        csvString = latin1.decode(bytes);
+      }
+
+      final firstLine = csvString.trim().split('\n').first;
+      final delimiter =
+          (firstLine.split(',').length > firstLine.split(';').length) ? ',' : ';';
+
+      final List<List<dynamic>> fields = 
+          CsvToListConverter(fieldDelimiter: delimiter).convert(csvString);
+
+      if (fields.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Base de clientes importada com sucesso!'),
+              content: Text('Arquivo CSV vazio ou inválido.'),
               duration: Duration(seconds: 2),
             ),
           );
-          Navigator.of(context).pop();
         }
-      } catch (e, s) {
-        debugPrint('Error during import: $e');
-        debugPrint(s.toString());
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Erro ao importar: $e'),
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+        return;
+      }
+
+      final headers = fields.first.map((e) => e.toString()).toList();
+      final Map<String, ClientBaseModel> clientsToPut = {};
+      for (int i = 1; i < fields.length; i++) {
+        final row = fields[i];
+        final newClientBase = ClientBaseModel()
+          ..code = _getValueFromRow(row, headers, 'Código')
+          ..legalName = _getValueFromRow(row, headers, 'Razão Social')
+          ..tradeName = _getValueFromRow(row, headers, 'Nome Fantasia')
+          ..notes = _getValueFromRow(row, headers, 'Observação')
+          ..creditLimit = _parseDouble(_getValueFromRow(row, headers, 'Limite de Crédito'))
+          ..isBlocked = _parseBool(_getValueFromRow(row, headers, 'Bloqueio Financeiro'));
+        clientsToPut[newClientBase.code] = newClientBase;
+      }
+
+      await box.putAll(clientsToPut);
+
+      // Update the last update timestamp in the metadata box.
+      final metadataBox = Hive.box('metadata'); // Access directly
+      await metadataBox.put('client_base_last_update', DateTime.now().toIso8601String());
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Base de clientes importada com sucesso!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e, s) {
+      debugPrint('Error during client import: $e');
+      debugPrint(s.toString());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao importar clientes: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
+  }
+
+  /// Helper method to safely get a value from a CSV row based on a mapped field name.
+  /// Returns an empty string if the field is not mapped or the index is out of bounds.
+  String _getValueFromRow(List<dynamic> row, List<String> headers, String fieldName) {
+    final headerName = _columnMapping[fieldName];
+    if (headerName == null) {
+      debugPrint('Warning: Field "$fieldName" is not mapped.');
+      return '';
+    }
+    final index = headers.indexOf(headerName);
+    if (index == -1 || index >= row.length) {
+      debugPrint('Warning: Header "$headerName" for field "$fieldName" not found in CSV row or index out of bounds. Row length: ${row.length}');
+      return '';
+    }
+    return row[index].toString();
+  }
+
+  /// Builds the initial view where the user can select a CSV file to import.
   Widget _buildFilePickerView() {
     return Column(
       children: [
@@ -264,10 +303,10 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.2),
+            color: Theme.of(context).colorScheme.secondaryContainer.withAlpha(51),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+              color: Theme.of(context).colorScheme.onSurface.withAlpha(102),
               width: 2,
             ),
           ),
@@ -289,7 +328,7 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
                 'O arquivo deve conter as colunas: Código, Razão Social, Nome Fantasia, etc.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
                 ),
               ),
               const SizedBox(height: 24),
@@ -311,6 +350,7 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
     );
   }
 
+  /// Returns a list of required fields that are mapped to the given CSV header.
   List<String> _getFieldsForHeader(String header) {
     return _columnMapping.entries
         .where((entry) => entry.value == header)
@@ -318,6 +358,8 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
         .toList();
   }
 
+  /// Builds the view that displays the selected file and allows the user to
+  /// confirm or adjust the column mappings for required fields.
   Widget _buildColumnMappingView(String fileName) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,11 +372,11 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
         const SizedBox(height: 8),
         Card(
           elevation: 0,
-          color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.2),
+          color: Theme.of(context).colorScheme.secondaryContainer.withAlpha(51),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
             side: BorderSide(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+              color: Theme.of(context).colorScheme.onSurface.withAlpha(51),
             ),
           ),
           child: ListTile(
@@ -367,6 +409,7 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
           const SizedBox(height: 8),
           Text(
             'O sistema fez um mapeamento automático. Revise e confirme cada campo. A importação só será liberada após todas as confirmações e sem mapeamentos duplicados.',
+            textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
@@ -374,12 +417,27 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _requiredFields.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final field = _requiredFields[index];
               final isConfirmed = _confirmedFields.contains(field);
               final selectedHeader = _columnMapping[field];
-              final fieldsForThisHeader = _getFieldsForHeader(selectedHeader!);
+
+              if (selectedHeader == null) {
+                // Display a clear warning for unmapped required fields.
+                return Card(
+                  elevation: 0,
+                  color: Theme.of(context).colorScheme.errorContainer.withAlpha(51),
+                  child: ListTile(
+                    title: Text(
+                      'Campo obrigatório "$field" não mapeado.',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                    trailing: const Icon(Icons.error, color: Colors.red),
+                  ),
+                );
+              }
+              final fieldsForThisHeader = _getFieldsForHeader(selectedHeader);
               final isDuplicate = fieldsForThisHeader.length > 1;
 
               return Card(
@@ -389,13 +447,19 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
                   side: BorderSide(
                     color: isDuplicate
                         ? Colors.orange.shade300
-                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
+                        : Theme.of(context).colorScheme.onSurface.withAlpha(26),
                     width: 1,
                   ),
                 ),
-                color: isDuplicate ? Colors.orange.withOpacity(0.05) : Colors.transparent,
+                color: isDuplicate ? Colors.orange.withAlpha(13) : Colors.transparent,
                 child: ListTile(
-                  title: Text(field, style: const TextStyle(fontWeight: FontWeight.w500)),
+                  title: Text(
+                    field,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                    maxLines: 1, // Ensure text stays on a single line
+                    softWrap: false, // Prevent wrapping
+                    overflow: TextOverflow.fade, // Apply fade effect on overflow
+                  ),
                   trailing: SizedBox(
                     width: 350,
                     child: Row(
@@ -403,7 +467,7 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
                       children: [
                         if (isDuplicate)
                           Tooltip(
-                            message: 'A coluna "${selectedHeader}" está mapeada para:\n- ${fieldsForThisHeader.join('\n- ')}',
+                            message: 'A coluna "$selectedHeader" está mapeada para:\n- ${fieldsForThisHeader.join('\n- ')}',
                             child: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 20),
                           ),
                         const SizedBox(width: 8),
@@ -416,7 +480,11 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
                               items: _csvHeaders.map((header) {
                                 return DropdownMenuItem<String>(
                                   value: header,
-                                  child: Text(header, overflow: TextOverflow.ellipsis),
+                                  child: Text(
+                                    header,
+                                    overflow: TextOverflow.fade, // Apply fade effect on overflow
+                                    softWrap: false, // Ensure text does not wrap
+                                  ),
                                 );
                               }).toList(),
                               onChanged: (value) {
@@ -469,7 +537,9 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
     final uniqueMappedValues = mappedValues.toSet();
     final hasDuplicates = mappedValues.length != uniqueMappedValues.length;
 
+    // Check if all required fields are mapped and confirmed.
     final allConfirmed = _csvHeaders.isEmpty || _confirmedFields.length == _requiredFields.length;
+    // The import button is enabled only if all fields are confirmed and there are no duplicate mappings.
     final canImport = allConfirmed && !hasDuplicates;
 
     return AlertDialog(
@@ -512,9 +582,9 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (fileName == null)
-                  _buildFilePickerView()
+                  _buildFilePickerView() // Display file picker if no file is selected.
                 else
-                  _buildColumnMappingView(fileName),
+                  _buildColumnMappingView(fileName), // Display column mapping if a file is selected.
 
                 if (_csvHeaders.isNotEmpty) ...[
                   const SizedBox(height: 24),
@@ -542,6 +612,7 @@ class _ImportClientsCsvModalState extends State<ImportClientsCsvModal> {
                   ),
                   if (!canImport) ...[
                     const SizedBox(height: 8),
+                    // Display warnings if not all fields are confirmed or if there are duplicate mappings.
                     if (!allConfirmed)
                       Text(
                         'Confirme todos os mapeamentos para continuar.',
