@@ -28,16 +28,17 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
   late TextEditingController _emEntregaSearchController;
   late TextEditingController _finalizadasSearchController;
   final Map<String, GlobalKey> _deliveryKeys = {};
-  final Set<String> _expandedDeliveryIds = {};
   String? _navigateToDeliveryId;
 
   // Search/filter state
   String _notasSearchQuery = '';
-  String _notasStatusFilter = 'Sem entrega'; // New filter for notes tab
+  String _notasStatusFilter = 'Sem entrega';
+  DateTime? _notasFilterDate;
   String _emEntregaSearchQuery = '';
+  String _entregasStatusFilter = 'Todos';
+  DateTime? _entregasFilterDate;
   String _finalizadasSearchQuery = '';
   DateTime? _finalizadasFilterDate = DateTime.now();
-  String _entregasStatusFilter = 'Todos';
 
   String _formatDate(String? s) {
     if (s == null) return '—';
@@ -149,52 +150,166 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
   Widget _buildNotasTab() {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(
+              bottom: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.1),
+              ),
+            ),
+          ),
           child: Row(
             children: [
+              // Search bar compacto - expandido
               Expanded(
                 flex: 2,
                 child: TextField(
-                  decoration: const InputDecoration(
-                    labelText: 'Buscar',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar nota ou responsável...',
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    isDense: true,
                   ),
+                  style: const TextStyle(fontSize: 13),
                   onChanged: (v) => setState(() => _notasSearchQuery = v),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButton<String>(
-                  value: _notasStatusFilter,
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(
+              const SizedBox(width: 8),
+              // Status filter - dropdown customizado tipo Gmail
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withOpacity(0.3),
+                ),
+                child: PopupMenuButton<String>(
+                  initialValue: _notasStatusFilter,
+                  onSelected: (v) => setState(() => _notasStatusFilter = v),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
                       value: 'Sem entrega',
                       child: Text('Sem entrega'),
                     ),
-                    DropdownMenuItem(
+                    const PopupMenuItem(
                       value: 'Aguardando Envio',
                       child: Text('Aguardando Envio'),
                     ),
-                    DropdownMenuItem(
+                    const PopupMenuItem(
                       value: 'Em Entrega',
                       child: Text('Em Entrega'),
                     ),
-                    DropdownMenuItem(
+                    const PopupMenuItem(
                       value: 'Finalizado',
                       child: Text('Finalizado'),
                     ),
-                    DropdownMenuItem(
+                    const PopupMenuItem(
                       value: 'Cancelado',
                       child: Text('Cancelado'),
                     ),
-                    DropdownMenuItem(value: 'Todas', child: Text('Todas')),
+                    const PopupMenuItem(value: 'Todas', child: Text('Todas')),
                   ],
-                  onChanged: (v) =>
-                      setState(() => _notasStatusFilter = v ?? 'Sem entrega'),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  offset: const Offset(0, 35),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _notasStatusFilter == 'Aguardando Envio'
+                              ? 'Aguardando'
+                              : _notasStatusFilter,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
+              ),
+              const SizedBox(width: 8),
+              // Date filter chip
+              FilterChip(
+                label: Text(
+                  _notasFilterDate == null
+                      ? 'Data'
+                      : DateFormat('dd/MM').format(_notasFilterDate!),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _notasFilterDate != null
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                ),
+                selected: _notasFilterDate != null,
+                onSelected: (selected) async {
+                  if (!selected) {
+                    setState(() => _notasFilterDate = null);
+                  } else {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _notasFilterDate ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      setState(() => _notasFilterDate = picked);
+                    }
+                  }
+                },
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                selectedColor: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withOpacity(0.3),
+                side: BorderSide.none,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+                avatar: _notasFilterDate != null
+                    ? Icon(
+                        Icons.close,
+                        size: 14,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
+                    : null,
+                showCheckmark: false,
               ),
             ],
           ),
@@ -212,7 +327,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
               for (final d in deliveries) {
                 usedOrderIds.addAll(d.orderIds);
               }
-              // Filter: search query + status filter
+              // Filter: search query + status filter + date filter
               final filtered = orders.where((o) {
                 final matchesSearch =
                     o.orderNumber.toLowerCase().contains(
@@ -247,7 +362,24 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                   }
                 }
 
-                return matchesSearch && matchesStatusFilter;
+                // Apply date filter
+                bool matchesDateFilter = true;
+                if (_notasFilterDate != null) {
+                  final orderDate = DateTime.tryParse(o.createdAt);
+                  if (orderDate == null) {
+                    matchesDateFilter = false;
+                  } else {
+                    final fd = _notasFilterDate!;
+                    matchesDateFilter =
+                        orderDate.year == fd.year &&
+                        orderDate.month == fd.month &&
+                        orderDate.day == fd.day;
+                  }
+                }
+
+                return matchesSearch &&
+                    matchesStatusFilter &&
+                    matchesDateFilter;
               }).toList();
 
               // Sort by status priority and then by date
@@ -328,85 +460,151 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
   Widget _buildOrderCard(BuildContext context, OrderModel order) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         title: Row(
           children: [
-            Text(
-              'Pedido #${order.orderNumber}',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(
+                Icons.receipt_long,
+                color: Theme.of(context).colorScheme.primary,
+                size: 18,
+              ),
             ),
-            const SizedBox(width: 12),
-            Builder(
-              builder: (ctx) {
-                DeliveryModel? associatedDelivery;
-                try {
-                  associatedDelivery = _deliveriesBox.values
-                      .toList()
-                      .cast<DeliveryModel>()
-                      .firstWhere((d) => d.orderIds.contains(order.id));
-                } catch (_) {
-                  associatedDelivery = null;
-                }
-
-                final chipLabel = associatedDelivery != null
-                    ? _translateStatus(associatedDelivery.status)
-                    : 'Sem entrega';
-                final chipColor = associatedDelivery != null
-                    ? _getStatusColor(associatedDelivery.status)
-                    : Colors.grey;
-
-                return Chip(
-                  label: Text(
-                    chipLabel,
-                    style: const TextStyle(fontSize: 11, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Pedido #${order.orderNumber}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.person_outline,
+                              size: 12,
+                              color: Colors.grey[600],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              order.responsible,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  backgroundColor: chipColor,
+                  // Status chip movido para o trailing junto aos botões
+                ],
+              ),
+            ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4, left: 34),
+          child: Row(
+            children: [
+              Icon(Icons.access_time, size: 11, color: Colors.grey[500]),
+              const SizedBox(width: 4),
+              Text(
+                _formatDate(order.createdAt),
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ),
+        trailing: Builder(
+          builder: (ctx) {
+            DeliveryModel? associatedDelivery;
+            try {
+              associatedDelivery = _deliveriesBox.values
+                  .toList()
+                  .cast<DeliveryModel>()
+                  .firstWhere((d) => d.orderIds.contains(order.id));
+            } catch (_) {
+              associatedDelivery = null;
+            }
+
+            final chipLabel = associatedDelivery != null
+                ? _translateStatus(associatedDelivery.status)
+                : 'Sem entrega';
+            final chipColor = associatedDelivery != null
+                ? _getStatusColor(associatedDelivery.status)
+                : Colors.grey;
+
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
+                    horizontal: 10,
+                    vertical: 5,
                   ),
-                );
-              },
-            ),
-          ],
-        ),
-        subtitle: Row(
-          children: [
-            Text(order.responsible, style: const TextStyle(fontSize: 12)),
-            const SizedBox(width: 16),
-            Text(
-              _formatDate(order.createdAt),
-              style: const TextStyle(fontSize: 11, color: Colors.grey),
-            ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Builder(
-              builder: (ctx) {
-                DeliveryModel? associatedDelivery;
-                try {
-                  associatedDelivery = _deliveriesBox.values
-                      .toList()
-                      .cast<DeliveryModel>()
-                      .firstWhere((d) => d.orderIds.contains(order.id));
-                } catch (_) {
-                  associatedDelivery = null;
-                }
-
-                return IconButton(
-                  tooltip: 'Rastrear',
-                  icon: const Icon(Icons.location_searching),
+                  decoration: BoxDecoration(
+                    color: chipColor,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    chipLabel,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: associatedDelivery != null
+                      ? 'Rastrear Entrega'
+                      : 'Enviar nota',
+                  icon: Icon(
+                    associatedDelivery != null
+                        ? Icons.my_location
+                        : Icons.local_shipping_outlined,
+                    size: 22,
+                    color: associatedDelivery != null
+                        ? Theme.of(context).colorScheme.secondary
+                        : Theme.of(context).colorScheme.primary,
+                  ),
                   onPressed: () {
                     if (associatedDelivery == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Nota sem entrega associada'),
-                        ),
-                      );
+                      // Muda para aba de entregas
+                      _tabController.animateTo(1); // Aba Em Entrega
+                      // Usa addPostFrameCallback para abrir o modal após a animação
+                      // sem async gap - assim o context continua válido
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        showDialog(
+                          context: context,
+                          builder: (dctx) => AddDeliveryModal(
+                            ordersBox: _ordersBox,
+                            deliveriesBox: _deliveriesBox,
+                            driversBox: _driversBox,
+                            preSelectedOrderId: order.id,
+                          ),
+                        );
+                      });
                       return;
                     }
 
@@ -458,14 +656,8 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                                 if (associatedDelivery?.status == 'delivered' ||
                                     associatedDelivery?.status == 'cancelled') {
                                   _tabController.index = 2; // Aba Finalizadas
-                                  _finalizadasSearchQuery = order.orderNumber;
-                                  _finalizadasSearchController.text =
-                                      order.orderNumber;
                                 } else {
-                                  _tabController.index = 1; // Aba Entregas
-                                  _emEntregaSearchQuery = order.orderNumber;
-                                  _emEntregaSearchController.text =
-                                      order.orderNumber;
+                                  _tabController.index = 1; // Aba Em Entrega
                                 }
                               });
                             },
@@ -475,88 +667,183 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                       ),
                     );
                   },
-                );
-              },
-            ),
-
-            PopupMenuButton<String>(
-              onSelected: (v) => _handleOrderAction(v, order),
-              itemBuilder: (ctx) => [
-                const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                const PopupMenuItem(value: 'delete', child: Text('Deletar')),
+                ),
+                const SizedBox(width: 8),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'detalhes',
+                      child: Text('Ver detalhes'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'excluir',
+                      child: Text('Excluir nota'),
+                    ),
+                  ],
+                  onSelected: (value) {
+                    // ...existing code...
+                  },
+                ),
               ],
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
-  }
-
-  void _handleOrderAction(String action, OrderModel order) {
-    switch (action) {
-      case 'edit':
-        showDialog(
-          context: context,
-          builder: (ctx) => EditOrderModal(order: order),
-        );
-        break;
-      case 'delete':
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Deletar Pedido'),
-            content: const Text('Tem certeza que deseja deletar este pedido?'),
-            actions: [
-              TextButton(
-                onPressed: Navigator.of(ctx).pop,
-                child: const Text('Cancelar'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  order.delete();
-                  Navigator.of(ctx).pop();
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('Deletar'),
-              ),
-            ],
-          ),
-        );
-        break;
-    }
   }
 
   // ===== EM ENTREGA TAB =====
   Widget _buildEmEntregaTab() {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(
+              bottom: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.1),
+              ),
+            ),
+          ),
           child: Row(
             children: [
+              // Search bar compacto - expandido
               Expanded(
+                flex: 2,
                 child: TextField(
                   controller: _emEntregaSearchController,
-                  decoration: const InputDecoration(
-                    labelText: 'Buscar por ID, motorista ou nota',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar por ID, motorista ou nota...',
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    isDense: true,
                   ),
+                  style: const TextStyle(fontSize: 13),
                   onChanged: (v) => setState(() => _emEntregaSearchQuery = v),
                 ),
               ),
               const SizedBox(width: 8),
-              DropdownButton<String>(
-                value: _entregasStatusFilter,
-                items: const [
-                  DropdownMenuItem(value: 'Todos', child: Text('Todos')),
-                  DropdownMenuItem(
-                    value: 'Em Entrega',
-                    child: Text('Em Entrega'),
+              // Status filter - dropdown customizado tipo Gmail
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withOpacity(0.3),
+                ),
+                child: PopupMenuButton<String>(
+                  initialValue: _entregasStatusFilter,
+                  onSelected: (v) => setState(() => _entregasStatusFilter = v),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'Todos', child: Text('Todos')),
+                    const PopupMenuItem(
+                      value: 'Aguardando envio',
+                      child: Text('Aguardando envio'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'Em Entrega',
+                      child: Text('Em Entrega'),
+                    ),
+                  ],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                ],
-                onChanged: (v) =>
-                    setState(() => _entregasStatusFilter = v ?? 'Todos'),
+                  offset: const Offset(0, 35),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _entregasStatusFilter,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Date filter chip
+              FilterChip(
+                label: Text(
+                  _entregasFilterDate == null
+                      ? 'Data criação'
+                      : DateFormat('dd/MM').format(_entregasFilterDate!),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _entregasFilterDate != null
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                ),
+                selected: _entregasFilterDate != null,
+                onSelected: (selected) async {
+                  if (!selected) {
+                    setState(() => _entregasFilterDate = null);
+                  } else {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _entregasFilterDate ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      setState(() => _entregasFilterDate = picked);
+                    }
+                  }
+                },
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                selectedColor: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withOpacity(0.3),
+                side: BorderSide.none,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+                avatar: _entregasFilterDate != null
+                    ? Icon(
+                        Icons.close,
+                        size: 14,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
+                    : null,
+                showCheckmark: false,
               ),
             ],
           ),
@@ -573,8 +860,12 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                   )
                   .toList();
 
-              // Apply status filter from dropdown: 'Todos' / 'Em Entrega'
-              if (_entregasStatusFilter == 'Em Entrega') {
+              // Apply status filter from dropdown: 'Todos' / 'Aguardando envio' / 'Em Entrega'
+              if (_entregasStatusFilter == 'Aguardando envio') {
+                deliveries = deliveries
+                    .where((d) => d.status == 'assigned')
+                    .toList();
+              } else if (_entregasStatusFilter == 'Em Entrega') {
                 deliveries = deliveries
                     .where((d) => d.status == 'dispatched')
                     .toList();
@@ -603,7 +894,23 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                   }
                 }
 
-                return matchesId || matchesDriver || matchesOrder;
+                // Apply date filter (based on createdAt)
+                bool matchesDateFilter = true;
+                if (_entregasFilterDate != null) {
+                  final deliveryDate = DateTime.tryParse(d.createdAt);
+                  if (deliveryDate == null) {
+                    matchesDateFilter = false;
+                  } else {
+                    final fd = _entregasFilterDate!;
+                    matchesDateFilter =
+                        deliveryDate.year == fd.year &&
+                        deliveryDate.month == fd.month &&
+                        deliveryDate.day == fd.day;
+                  }
+                }
+
+                return (matchesId || matchesDriver || matchesOrder) &&
+                    matchesDateFilter;
               }).toList();
 
               // Sort by recent createdAt ones
@@ -618,28 +925,15 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
               });
 
               // If someone requested navigation to a specific delivery, try to
-              // scroll to and expand it after this frame (keys are attached
-              // during itemBuilder).
+              // scroll to it and open the modal after this frame
               if (_navigateToDeliveryId != null) {
                 final idx = filtered.indexWhere(
                   (e) => e.id == _navigateToDeliveryId,
                 );
                 if (idx != -1) {
+                  final targetDelivery = filtered[idx];
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    final key = _deliveryKeys[_navigateToDeliveryId];
-                    if (key?.currentContext != null) {
-                      Scrollable.ensureVisible(
-                        key!.currentContext!,
-                        duration: const Duration(milliseconds: 400),
-                        alignment: 0.1,
-                      );
-                      setState(() {
-                        _expandedDeliveryIds.add(_navigateToDeliveryId!);
-                        _navigateToDeliveryId = null;
-                      });
-                    } else {
-                      setState(() => _navigateToDeliveryId = null);
-                    }
+                    _scrollToAndShowDelivery(targetDelivery);
                   });
                 } else {
                   _navigateToDeliveryId = null;
@@ -657,11 +951,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                         _deliveryKeys.putIfAbsent(d.id, () => GlobalKey());
                         return Container(
                           key: _deliveryKeys[d.id],
-                          child: _buildDeliveryCard(
-                            context,
-                            d,
-                            expanded: _expandedDeliveryIds.contains(d.id),
-                          ),
+                          child: _buildDeliveryCard(context, d),
                         );
                       },
                     );
@@ -693,54 +983,99 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
   Widget _buildFinalizadasTab() {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(
+              bottom: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.1),
+              ),
+            ),
+          ),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _finalizadasSearchController,
-                      decoration: const InputDecoration(
-                        labelText: 'Buscar por ID, motorista ou nota',
-                        prefixIcon: Icon(Icons.search),
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (v) =>
-                          setState(() => _finalizadasSearchQuery = v),
+              // Search bar compacto - expandido
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _finalizadasSearchController,
+                  decoration: InputDecoration(
+                    hintText: 'Buscar por ID, motorista ou nota...',
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _finalizadasFilterDate ?? DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked != null) {
-                        setState(() => _finalizadasFilterDate = picked);
-                      }
-                    },
-                    icon: const Icon(Icons.calendar_today),
-                    label: Text(
-                      _finalizadasFilterDate == null
-                          ? 'Todos'
-                          : DateFormat(
-                              'dd/MM/yyyy',
-                            ).format(_finalizadasFilterDate!),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    isDense: true,
                   ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    tooltip: 'Limpar filtro de data',
-                    onPressed: () =>
-                        setState(() => _finalizadasFilterDate = null),
-                    icon: const Icon(Icons.clear),
+                  style: const TextStyle(fontSize: 13),
+                  onChanged: (v) => setState(() => _finalizadasSearchQuery = v),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Date filter chip
+              FilterChip(
+                label: Text(
+                  _finalizadasFilterDate == null
+                      ? 'Data finalização'
+                      : DateFormat('dd/MM').format(_finalizadasFilterDate!),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _finalizadasFilterDate != null
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
                   ),
-                ],
+                ),
+                selected: _finalizadasFilterDate != null,
+                onSelected: (selected) async {
+                  if (!selected) {
+                    setState(() => _finalizadasFilterDate = null);
+                  } else {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _finalizadasFilterDate ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      setState(() => _finalizadasFilterDate = picked);
+                    }
+                  }
+                },
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                selectedColor: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withOpacity(0.3),
+                side: BorderSide.none,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+                avatar: _finalizadasFilterDate != null
+                    ? Icon(
+                        Icons.close,
+                        size: 14,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
+                    : null,
+                showCheckmark: false,
               ),
             ],
           ),
@@ -810,16 +1145,13 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
     );
   }
 
-  Widget _buildDeliveryCard(
-    BuildContext context,
-    DeliveryModel d, {
-    bool expanded = false,
-  }) {
+  Widget _buildDeliveryCard(BuildContext context, DeliveryModel d) {
     final statusColor = _getStatusColor(d.status);
     final driver = d.driverId != null ? _driversBox.get(d.driverId) : null;
 
     // Calcular tempo de entrega: de dispatchedAt até finishedAt
     String elapsedTime = '—';
+    Color timeColor = Colors.grey;
     try {
       if (d.dispatchedAt != null) {
         final startDt = DateTime.tryParse(d.dispatchedAt!);
@@ -830,10 +1162,13 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
           final dur = endDt.difference(startDt);
           if (dur.inDays > 0) {
             elapsedTime = '${dur.inDays}d ${dur.inHours % 24}h';
+            timeColor = Colors.red;
           } else if (dur.inHours > 0) {
             elapsedTime = '${dur.inHours}h ${dur.inMinutes % 60}m';
+            timeColor = dur.inHours > 2 ? Colors.orange : Colors.blue;
           } else {
             elapsedTime = '${dur.inMinutes}m';
+            timeColor = Colors.green;
           }
         }
       }
@@ -842,70 +1177,360 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
     }
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: ExpansionTile(
-        initiallyExpanded: expanded,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        onTap: () => _showDeliveryDetailsModal(
+          context,
+          d,
+          driver,
+          elapsedTime,
+          timeColor,
+        ),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: statusColor.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            d.status == 'delivered' ? Icons.check_circle : Icons.local_shipping,
+            color: statusColor,
+            size: 20,
+          ),
+        ),
         title: Row(
           children: [
             Expanded(
-              child: Text(
-                'Entrega #${d.id.substring(0, 8)}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Entrega #${d.id.substring(0, 8)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (driver != null) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.person, size: 12, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          driver.name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[700],
+                            fontWeight: FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
             ),
-            Chip(
-              label: Text(_translateStatus(d.status)),
-              backgroundColor: statusColor,
-              labelStyle: const TextStyle(color: Colors.white, fontSize: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (d.dispatchedAt != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: timeColor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: timeColor.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.timer_outlined,
+                              size: 12,
+                              color: timeColor,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              elapsedTime,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: timeColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        _translateStatus(d.status),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
-        subtitle: Text(
-          'Criado: ${_formatDate(d.createdAt)}',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Orders in delivery
-                _buildDeliveryOrders(d),
-                const Divider(),
-                // Timeline
-                _buildTimelineSection(d, elapsedTime),
-                const Divider(),
-                // Driver
-                _buildDriverInfo(d, driver),
-                const Divider(),
-                // Actions
-                _buildActionButtons(context, d),
-              ],
-            ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            children: [
+              Icon(Icons.schedule, size: 11, color: Colors.grey[500]),
+              const SizedBox(width: 4),
+              Text(
+                'Criado: ${_formatDate(d.createdAt)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              ),
+            ],
           ),
-        ],
+        ),
+        trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
+      ),
+    );
+  }
+
+  void _showDeliveryDetailsModal(
+    BuildContext context,
+    DeliveryModel d,
+    DriverModel? driver,
+    String elapsedTime,
+    Color timeColor,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _getStatusColor(d.status).withOpacity(0.1),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(d.status).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        d.status == 'delivered'
+                            ? Icons.check_circle
+                            : Icons.local_shipping,
+                        color: _getStatusColor(d.status),
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Entrega #${d.id.substring(0, 8)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(d.status),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              _translateStatus(d.status),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTimelineSection(d, elapsedTime),
+                      const Divider(height: 24),
+                      _buildDeliveryOrders(d),
+                      const Divider(height: 24),
+                      _buildDriverInfo(d, driver),
+                    ],
+                  ),
+                ),
+              ),
+              // Action Buttons - Always visible
+              _buildActionButtons(context, d),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildDeliveryOrders(DeliveryModel d) {
     if (d.orderIds.isEmpty) {
-      return const Text(
-        'Sem notas',
-        style: TextStyle(fontStyle: FontStyle.italic),
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, size: 16, color: Colors.grey[600]),
+            const SizedBox(width: 8),
+            const Text(
+              'Sem notas associadas',
+              style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+            ),
+          ],
+        ),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Notas:', style: TextStyle(fontWeight: FontWeight.bold)),
+        Row(
+          children: [
+            Icon(Icons.receipt_long, size: 18, color: Colors.blue[700]),
+            const SizedBox(width: 8),
+            const Text(
+              'Notas:',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${d.orderIds.length}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[900],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         ...d.orderIds.map((orderId) {
           final order = _ordersBox.get(orderId);
-          return Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              '• Nota #${order?.orderNumber ?? orderId} - ${order?.responsible ?? "—"}',
+          return Container(
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue[700]!, Colors.blue[600]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withOpacity(0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(Icons.tag, size: 14, color: Colors.white),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Nota #${order?.orderNumber ?? orderId}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (order?.responsible != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          order!.responsible,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           );
         }),
@@ -949,57 +1574,235 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
     );
   }
 
+  Future<void> _scrollToAndShowDelivery(DeliveryModel targetDelivery) async {
+    final key = _deliveryKeys[targetDelivery.id];
+    if (key?.currentContext == null) {
+      if (mounted) setState(() => _navigateToDeliveryId = null);
+      return;
+    }
+
+    await Scrollable.ensureVisible(
+      key!.currentContext!,
+      duration: const Duration(milliseconds: 400),
+      alignment: 0.1,
+    );
+
+    if (!mounted) return;
+
+    final driver = targetDelivery.driverId != null
+        ? _driversBox.get(targetDelivery.driverId)
+        : null;
+    String elapsedTime = '—';
+    Color timeColor = Colors.grey;
+    if (targetDelivery.dispatchedAt != null) {
+      final startDt = DateTime.tryParse(targetDelivery.dispatchedAt!);
+      if (startDt != null) {
+        final endDt = targetDelivery.finishedAt != null
+            ? DateTime.tryParse(targetDelivery.finishedAt!) ?? DateTime.now()
+            : DateTime.now();
+        final dur = endDt.difference(startDt);
+        if (dur.inDays > 0) {
+          elapsedTime = '${dur.inDays}d ${dur.inHours % 24}h';
+          timeColor = Colors.red;
+        } else if (dur.inHours > 0) {
+          elapsedTime = '${dur.inHours}h ${dur.inMinutes % 60}m';
+          timeColor = dur.inHours > 2 ? Colors.orange : Colors.blue;
+        } else {
+          elapsedTime = '${dur.inMinutes}m';
+          timeColor = Colors.green;
+        }
+      }
+    }
+
+    _showDeliveryDetailsModal(
+      context,
+      targetDelivery,
+      driver,
+      elapsedTime,
+      timeColor,
+    );
+
+    if (mounted) {
+      setState(() => _navigateToDeliveryId = null);
+    }
+  }
+
   Widget _buildDriverInfo(DeliveryModel d, DriverModel? driver) {
-    // Show driver details when the card is expanded (always inside children)
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Motorista:', style: TextStyle(fontWeight: FontWeight.bold)),
-        if (driver != null)
-          Text('👤 ${driver.name}')
-        else
-          const Text(
-            'Não atribuído',
-            style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+        Row(
+          children: [
+            Icon(Icons.badge_outlined, size: 18, color: Colors.green[700]),
+            const SizedBox(width: 8),
+            const Text(
+              'Motorista:',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: driver != null
+                  ? [Colors.green[700]!, Colors.green[600]!]
+                  : [Colors.grey[600]!, Colors.grey[500]!],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: (driver != null ? Colors.green : Colors.grey)
+                    .withOpacity(0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  driver != null ? Icons.person : Icons.person_off_outlined,
+                  size: 20,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  driver?.name ?? 'Não atribuído',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: driver != null
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                    color: Colors.white,
+                    fontStyle: driver == null
+                        ? FontStyle.italic
+                        : FontStyle.normal,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildActionButtons(BuildContext context, DeliveryModel d) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        if (d.status == 'pending')
-          ElevatedButton.icon(
-            onPressed: () => _showAssignDriverDialog(d),
-            icon: const Icon(Icons.person_add),
-            label: const Text('Atribuir Motorista'),
-          ),
-        if (d.status == 'assigned' && d.driverId != null)
-          ElevatedButton.icon(
-            onPressed: () => _dispatchDelivery(d),
-            icon: const Icon(Icons.send),
-            label: const Text('Despachar'),
-          ),
-        if (d.status == 'dispatched')
-          ElevatedButton.icon(
-            onPressed: () => _finishDelivery(d),
-            icon: const Icon(Icons.check_circle),
-            label: const Text('Finalizar'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
+    final theme = Theme.of(context);
+
+    // Lista de ações disponíveis
+    final List<Widget> actions = [];
+
+    // Ação secundária de cancelamento (primeiro para ficar à esquerda)
+    if (d.status != 'delivered' && d.status != 'cancelled') {
+      actions.add(
+        TextButton.icon(
+          onPressed: () => _cancelDelivery(d),
+          icon: const Icon(Icons.close_rounded, size: 18),
+          label: const Text('Cancelar Entrega'),
+          style: TextButton.styleFrom(
+            foregroundColor: theme.colorScheme.error,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
-        if (d.status != 'delivered' && d.status != 'cancelled')
-          OutlinedButton.icon(
-            onPressed: () => _cancelDelivery(d),
-            icon: const Icon(Icons.cancel),
-            label: const Text('Cancelar'),
+        ),
+      );
+    }
+
+    // Ação principal baseada no status (segundo para ficar à direita)
+    if (d.status == 'pending') {
+      actions.add(
+        FilledButton.icon(
+          onPressed: () => _showAssignDriverDialog(d),
+          icon: const Icon(Icons.person_add_rounded),
+          label: const Text('Atribuir Motorista'),
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.primary,
+            foregroundColor: theme.colorScheme.onPrimary,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
           ),
-      ],
+        ),
+      );
+    } else if (d.status == 'assigned' && d.driverId != null) {
+      actions.add(
+        FilledButton.icon(
+          onPressed: () => _dispatchDelivery(d),
+          icon: const Icon(Icons.local_shipping_rounded),
+          label: const Text('Despachar'),
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.primary,
+            foregroundColor: theme.colorScheme.onPrimary,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      );
+    } else if (d.status == 'dispatched') {
+      actions.add(
+        FilledButton.icon(
+          onPressed: () => _finishDelivery(d),
+          icon: const Icon(Icons.check_circle_rounded),
+          label: const Text('Finalizar Entrega'),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF2E7D32),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (actions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.outlineVariant.withOpacity(0.5),
+            width: 1,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: actions.length == 1
+            ? SizedBox(width: double.infinity, child: actions.first)
+            : Row(
+                children: [
+                  Expanded(child: actions.first),
+                  if (actions.length > 1) ...[
+                    const SizedBox(width: 12),
+                    Expanded(child: actions[1]),
+                  ],
+                ],
+              ),
+      ),
     );
   }
 
@@ -1503,11 +2306,13 @@ class AddDeliveryModal extends StatefulWidget {
   final Box<OrderModel> ordersBox;
   final Box<DeliveryModel> deliveriesBox;
   final Box<DriverModel> driversBox;
+  final String? preSelectedOrderId;
   const AddDeliveryModal({
     super.key,
     required this.ordersBox,
     required this.deliveriesBox,
     required this.driversBox,
+    this.preSelectedOrderId,
   });
 
   @override
@@ -1517,6 +2322,14 @@ class AddDeliveryModal extends StatefulWidget {
 class _AddDeliveryModalState extends State<AddDeliveryModal> {
   final List<String> _selectedOrderIds = [];
   String? _selectedDriverId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.preSelectedOrderId != null) {
+      _selectedOrderIds.add(widget.preSelectedOrderId!);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
