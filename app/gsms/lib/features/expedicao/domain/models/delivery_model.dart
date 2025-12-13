@@ -1,5 +1,4 @@
 import 'package:hive/hive.dart';
-import 'dart:developer' as developer;
 
 part 'delivery_model.g.dart';
 
@@ -13,6 +12,9 @@ class DeliveryModel extends HiveObject {
 
   @HiveField(2)
   late String? driverId;
+
+  @HiveField(7)
+  List<String> teamDriverIds = <String>[]; // IDs da equipe de motoristas (primeiro é o motorista principal)
 
   @HiveField(3)
   late String status;

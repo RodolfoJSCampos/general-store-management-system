@@ -7,6 +7,7 @@ import 'package:gsms/features/home/domain/models/price_base_model.dart';
 import 'package:gsms/features/expedicao/domain/models/delivery_model.dart';
 import 'package:gsms/features/expedicao/domain/models/driver_model.dart';
 import 'package:gsms/features/expedicao/domain/models/order_model.dart';
+import 'package:gsms/features/expedicao/domain/models/seller_model.dart';
 import 'package:gsms/features/expedicao/domain/models/unknown_43_adapter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
@@ -21,31 +22,23 @@ void main() async {
   // to ensure it is available when nested reads occur.
   Hive.registerAdapter(Unknown43Adapter(), override: true);
 
-  Hive.registerAdapter(PriceBaseModelAdapter());
-  Hive.registerAdapter(ClientBaseModelAdapter());
-  Hive.registerAdapter(CostBaseModelAdapter());
-  Hive.registerAdapter(DeliveryModelAdapter());
-  Hive.registerAdapter(DriverModelAdapter());
-  Hive.registerAdapter(OrderModelAdapter());
+  Hive.registerAdapter<PriceBaseModel>(PriceBaseModelAdapter());
+  Hive.registerAdapter<ClientBaseModel>(ClientBaseModelAdapter());
+  Hive.registerAdapter<CostBaseModel>(CostBaseModelAdapter());
+  Hive.registerAdapter<DeliveryModel>(DeliveryModelAdapter());
+  Hive.registerAdapter<DriverModel>(DriverModelAdapter());
+  Hive.registerAdapter<OrderModel>(OrderModelAdapter());
+  Hive.registerAdapter<SellerModel>(SellerModelAdapter());
 
   // Abre as boxes
   await Hive.openBox('settings');
   await Hive.openBox<PriceBaseModel>('price_base');
   await Hive.openBox<ClientBaseModel>('client_base');
   await Hive.openBox<CostBaseModel>('cost_base');
-  // Open boxes for expedicao feature
   await Hive.openBox<OrderModel>('orders');
-  try {
-    await Hive.openBox<DeliveryModel>('deliveries');
-  } catch (e, s) {
-    // Log additional diagnostics to help identify legacy data layout issues.
-    // ignore: avoid_print
-    print('Error opening Hive box "deliveries": $e\n$s');
-    // Rethrow so the original failure behavior remains (app will still fail),
-    // but the detailed logs will be available in the console for diagnosis.
-    rethrow;
-  }
+  await Hive.openBox<DeliveryModel>('deliveries');
   await Hive.openBox<DriverModel>('drivers');
+  await Hive.openBox<SellerModel>('sellers');
   await Hive.openBox('metadata');
 
   // Run one-time migration to ensure all DeliveryModel entries have explicit orderIds

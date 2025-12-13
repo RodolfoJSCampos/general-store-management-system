@@ -3,37 +3,37 @@ import 'package:hive/hive.dart';
 /// A defensive, manual adapter for legacy objects stored with typeId=43.
 ///
 /// This adapter attempts to read the incoming value generically and
-/// returns a safe `String` representation. It's intentionally forgiving so
-/// that legacy records won't crash the app; after startup you can run a
-/// migration to normalize these values.
-class Unknown43Adapter extends TypeAdapter<String> {
+/// returns null to avoid crashes. Legacy records with this type will
+/// be silently ignored during reads.
+class Unknown43Adapter extends TypeAdapter<dynamic> {
   @override
   final int typeId = 43;
 
   @override
-  String read(BinaryReader reader) {
+  dynamic read(BinaryReader reader) {
+    // Skip reading the actual data - just consume it
     try {
-      // Try reading as a map-like object written by generated adapters
-      final numOfFields = reader.readByte();
-      final fields = <int, dynamic>{
-        for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
-      };
-      // Build a compact string representation
-      return fields.entries.map((e) => '${e.key}:${e.value}').join('|');
+      // Read and discard the value
+      reader.read();
     } catch (_) {
+      // If read fails, try reading as structured data
       try {
-        // Fallback: try to read a single dynamic value
-        final v = reader.read();
-        return v?.toString() ?? '<null>';
-      } catch (_) {
-        return '<unknown_type_43>';
-      }
+        final numOfFields = reader.readByte();
+        for (int i = 0; i < numOfFields; i++) {
+          reader.readByte(); // field index
+          try {
+            reader.read(); // field value
+          } catch (_) {}
+        }
+      } catch (_) {}
     }
+    // Always return null for this unknown type
+    return null;
   }
 
   @override
-  void write(BinaryWriter writer, String obj) {
-    // Not used — we don't intend to write this type back in its original form.
-    writer.write(obj);
+  void write(BinaryWriter writer, dynamic obj) {
+    // Write null
+    writer.write(null);
   }
 }
