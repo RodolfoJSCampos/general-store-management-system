@@ -2163,8 +2163,68 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                     matchesDateFilter;
               }).toList();
 
-              // Sort by recent createdAt ones
+              // Sort: status (Aguardando Envio > Em Entrega). Within Aguardando,
+              // prioritize nearer delivery forecast; within Em Entrega, keep newest first.
               filtered.sort((a, b) {
+                int statusRank(String status) {
+                  switch (status) {
+                    case 'assigned':
+                    case 'pending':
+                      return 0; // Aguardando Envio
+                    case 'dispatched':
+                      return 1; // Em Entrega
+                    default:
+                      return 2; // Unknown/others last
+                  }
+                }
+
+                int nullableDateCompare(DateTime? da, DateTime? db) {
+                  if (da == null && db == null) return 0;
+                  if (da == null) return 1; // nulls last
+                  if (db == null) return -1;
+                  return da.compareTo(db);
+                }
+
+                final statusComparison = statusRank(
+                  a.status,
+                ).compareTo(statusRank(b.status));
+                if (statusComparison != 0) return statusComparison;
+
+                // Inside Aguardando Envio: forecast date asc, period (manha before tarde), then createdAt asc
+                if (statusRank(a.status) == 0) {
+                  final fa = DateTime.tryParse(a.deliveryForecastDate ?? '');
+                  final fb = DateTime.tryParse(b.deliveryForecastDate ?? '');
+                  final forecastComparison = nullableDateCompare(fa, fb);
+                  if (forecastComparison != 0) return forecastComparison;
+
+                  int periodRank(String? period) {
+                    switch (period) {
+                      case 'manha':
+                        return 0;
+                      case 'tarde':
+                        return 1;
+                      default:
+                        return 2; // sem período informado vai para o fim entre iguais
+                    }
+                  }
+
+                  final periodComparison = periodRank(
+                    a.deliveryForecastPeriod,
+                  ).compareTo(periodRank(b.deliveryForecastPeriod));
+                  if (periodComparison != 0) return periodComparison;
+
+                  final ca =
+                      DateTime.tryParse(a.createdAt) ??
+                      DateTime.fromMillisecondsSinceEpoch(0);
+                  final cb =
+                      DateTime.tryParse(b.createdAt) ??
+                      DateTime.fromMillisecondsSinceEpoch(0);
+                  return ca.compareTo(
+                    cb,
+                  ); // older created first if everything else tied
+                }
+
+                // Inside Em Entrega: keep newest first
                 final da =
                     DateTime.tryParse(a.createdAt) ??
                     DateTime.fromMillisecondsSinceEpoch(0);
@@ -6180,7 +6240,16 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
 class AddOrderModal extends StatefulWidget {
   final Box<OrderModel> box;
   final Box<SellerModel> sellersBox;
-  const AddOrderModal({super.key, required this.box, required this.sellersBox});
+  final void Function(String id)? onCreated;
+
+  // Boxes are optional to tolerate call sites without args (fallback to global boxes)
+  AddOrderModal({
+    super.key,
+    Box<OrderModel>? box,
+    Box<SellerModel>? sellersBox,
+    this.onCreated,
+  }) : box = box ?? Hive.box<OrderModel>('orders'),
+       sellersBox = sellersBox ?? Hive.box<SellerModel>('sellers');
 
   @override
   State<AddOrderModal> createState() => _AddOrderModalState();
@@ -6772,6 +6841,9 @@ class _AddOrderModalState extends State<AddOrderModal> {
     widget.box.put(id, order);
 
     if (mounted) {
+      // Notifica caller para uso imediato (ex.: pré-selecionar a nota)
+      widget.onCreated?.call(id);
+
       // Exibe mensagem de sucesso
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -7668,6 +7740,17 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
             .where((o) => !usedOrderIds.contains(o.id))
             .toList();
 
+        // Newest notes first
+        availableOrders.sort((a, b) {
+          final da =
+              DateTime.tryParse(a.createdAt) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          final db =
+              DateTime.tryParse(b.createdAt) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          return db.compareTo(da);
+        });
+
         // Aplicar busca
         if (_searchQuery.isNotEmpty) {
           availableOrders = availableOrders.where((o) {
@@ -7924,18 +8007,22 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
             if (_searchQuery.isEmpty)
               ElevatedButton.icon(
                 onPressed: () async {
-                  final newId = await showDialog<String?>(
+                  await showDialog<void>(
                     context: context,
                     builder: (ctx) => AddOrderModal(
                       box: widget.ordersBox,
                       sellersBox: widget.sellersBox,
+                      onCreated: (newId) {
+                        if (mounted) {
+                          setState(() {
+                            if (!_selectedOrderIds.contains(newId)) {
+                              _selectedOrderIds.add(newId);
+                            }
+                          });
+                        }
+                      },
                     ),
                   );
-                  if (newId != null) {
-                    setState(() {
-                      _selectedOrderIds.add(newId);
-                    });
-                  }
                 },
                 icon: const Icon(Icons.add),
                 label: const Text('Criar nova nota'),
@@ -8310,7 +8397,7 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
               color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           InkWell(
             onTap: () async {
               final picked = await showDatePicker(
@@ -8427,12 +8514,12 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
         });
       },
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
               ? theme.colorScheme.primaryContainer
               : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected
                 ? theme.colorScheme.primary
@@ -8443,7 +8530,7 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: isSelected
                     ? theme.colorScheme.primary.withOpacity(0.2)
@@ -8452,39 +8539,39 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
               ),
               child: Icon(
                 icon,
-                size: 32,
+                size: 24,
                 color: isSelected
                     ? theme.colorScheme.primary
                     : theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
               label,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
                 color: isSelected
                     ? theme.colorScheme.onPrimaryContainer
                     : theme.colorScheme.onSurface,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               timeRange,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 color: isSelected
                     ? theme.colorScheme.onPrimaryContainer.withOpacity(0.7)
                     : theme.colorScheme.onSurfaceVariant,
               ),
             ),
             if (isSelected) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Icon(
                 Icons.check_circle,
                 color: theme.colorScheme.primary,
-                size: 20,
+                size: 18,
               ),
             ],
           ],
@@ -8881,18 +8968,22 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
           else
             TextButton.icon(
               onPressed: () async {
-                final newId = await showDialog<String?>(
+                await showDialog<void>(
                   context: context,
                   builder: (ctx) => AddOrderModal(
                     box: widget.ordersBox,
                     sellersBox: widget.sellersBox,
+                    onCreated: (newId) {
+                      if (mounted) {
+                        setState(() {
+                          if (!_selectedOrderIds.contains(newId)) {
+                            _selectedOrderIds.add(newId);
+                          }
+                        });
+                      }
+                    },
                   ),
                 );
-                if (newId != null) {
-                  setState(() {
-                    _selectedOrderIds.add(newId);
-                  });
-                }
               },
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Nova nota'),
