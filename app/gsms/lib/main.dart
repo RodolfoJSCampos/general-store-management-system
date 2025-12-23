@@ -20,7 +20,7 @@ void main() async {
   // Registra os adaptadores
   // Register defensive adapter for legacy typeId 43 early, with override
   // to ensure it is available when nested reads occur.
-  Hive.registerAdapter(Unknown43Adapter(), override: true);
+  Hive.registerAdapter<Unknown43Type?>(Unknown43Adapter(), override: true);
 
   Hive.registerAdapter<PriceBaseModel>(PriceBaseModelAdapter());
   Hive.registerAdapter<ClientBaseModel>(ClientBaseModelAdapter());

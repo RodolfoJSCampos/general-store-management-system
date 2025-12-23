@@ -17,37 +17,22 @@ class DeliveryModelAdapter extends TypeAdapter<DeliveryModel> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return DeliveryModel()
-      ..id = _readString(fields[0])
-      ..orderIds = (fields[1] as List?)?.cast<String>() ?? <String>[]
-      ..driverId = _readStringOrNull(fields[2])
-      ..teamDriverIds = (fields[7] as List?)?.cast<String>() ?? <String>[]
-      ..status = _readString(fields[3])
-      ..createdAt = _readString(fields[4])
-      ..dispatchedAt = _readStringOrNull(fields[5])
-      ..finishedAt = _readStringOrNull(fields[6]);
-  }
-
-  static String _readString(dynamic value) {
-    if (value is String) return value;
-    if (value is List && value.isNotEmpty) {
-      return value.first?.toString() ?? '';
-    }
-    return value?.toString() ?? '';
-  }
-
-  static String? _readStringOrNull(dynamic value) {
-    if (value == null) return null;
-    if (value is String) return value;
-    if (value is List && value.isNotEmpty) {
-      return value.first?.toString();
-    }
-    return value.toString();
+      ..id = fields[0] as String
+      ..orderIds = (fields[1] as List).cast<String>()
+      ..driverId = fields[2] as String?
+      ..teamDriverIds = (fields[7] as List).cast<String>()
+      ..status = fields[3] as String
+      ..createdAt = fields[4] as String
+      ..dispatchedAt = fields[5] as String?
+      ..finishedAt = fields[6] as String?
+      ..deliveryForecastDate = fields[8] as String?
+      ..deliveryForecastPeriod = fields[9] as String?;
   }
 
   @override
   void write(BinaryWriter writer, DeliveryModel obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -63,7 +48,11 @@ class DeliveryModelAdapter extends TypeAdapter<DeliveryModel> {
       ..writeByte(5)
       ..write(obj.dispatchedAt)
       ..writeByte(6)
-      ..write(obj.finishedAt);
+      ..write(obj.finishedAt)
+      ..writeByte(8)
+      ..write(obj.deliveryForecastDate)
+      ..writeByte(9)
+      ..write(obj.deliveryForecastPeriod);
   }
 
   @override

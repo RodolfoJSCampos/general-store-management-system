@@ -28,6 +28,12 @@ class DeliveryModel extends HiveObject {
   @HiveField(6)
   late String? finishedAt;
 
+  @HiveField(8)
+  String? deliveryForecastDate; // Data prevista de entrega (formato ISO8601)
+
+  @HiveField(9)
+  String? deliveryForecastPeriod; // Período: 'manha' ou 'tarde'
+
   /// Empty constructor for Hive
   DeliveryModel();
 

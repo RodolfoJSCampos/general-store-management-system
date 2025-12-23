@@ -88,6 +88,78 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
     }
   }
 
+  /// Formata o tempo que está em entrega
+  /// Retorna algo como "45 min em entrega" ou "2h 30m em entrega"
+  String? _formatDeliveryElapsedTime(DeliveryModel delivery) {
+    if (delivery.dispatchedAt == null || delivery.dispatchedAt!.isEmpty) {
+      return null;
+    }
+
+    try {
+      final dispatchedDt = DateTime.tryParse(delivery.dispatchedAt!);
+      if (dispatchedDt == null) return null;
+
+      final now = DateTime.now();
+      final duration = now.difference(dispatchedDt);
+
+      if (duration.inDays > 0) {
+        return '${duration.inDays}d ${duration.inHours % 24}h em entrega';
+      } else if (duration.inHours > 0) {
+        return '${duration.inHours}h ${duration.inMinutes % 60}m em entrega';
+      } else {
+        return '${duration.inMinutes}m em entrega';
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Formata a informação de previsão de entrega
+  /// Retorna algo como "Hoje • Manhã" ou "Amanhã • Tarde" ou "25/12 • Tarde"
+  /// Se não houver previsão, retorna null
+  String? _formatDeliveryForecast(DeliveryModel delivery) {
+    if (delivery.deliveryForecastDate == null ||
+        delivery.deliveryForecastPeriod == null) {
+      return null;
+    }
+
+    try {
+      final forecastDate = DateTime.parse(delivery.deliveryForecastDate!);
+      final today = DateTime.now();
+      final tomorrow = today.add(const Duration(days: 1));
+
+      // Normalizar datas para comparação (sem horas)
+      final forecastNormalized = DateTime(
+        forecastDate.year,
+        forecastDate.month,
+        forecastDate.day,
+      );
+      final todayNormalized = DateTime(today.year, today.month, today.day);
+      final tomorrowNormalized = DateTime(
+        tomorrow.year,
+        tomorrow.month,
+        tomorrow.day,
+      );
+
+      String dateStr;
+      if (forecastNormalized == todayNormalized) {
+        dateStr = 'Hoje';
+      } else if (forecastNormalized == tomorrowNormalized) {
+        dateStr = 'Amanhã';
+      } else {
+        dateStr = DateFormat('dd/MM').format(forecastDate);
+      }
+
+      final periodStr = delivery.deliveryForecastPeriod == 'manha'
+          ? 'Manhã'
+          : 'Tarde';
+
+      return '$dateStr • $periodStr';
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -560,7 +632,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                             maxCrossAxisExtent: 240,
                             crossAxisSpacing: 10,
                             mainAxisSpacing: 10,
-                            childAspectRatio: 1.55,
+                            mainAxisExtent: 150,
                           ),
                       padding: const EdgeInsets.all(10),
                       itemCount: filtered.length,
@@ -663,69 +735,33 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                 }
               },
               borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(11),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // PRIMARY: Order Number
-                    Text(
-                      '#${order.orderNumber}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.3,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Header: Nota
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
                     ),
-                    const SizedBox(height: 6),
-
-                    // Status Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: chipColor.withOpacity(0.14),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: chipColor.withOpacity(0.3),
-                          width: 0.8,
-                        ),
-                      ),
-                      child: Text(
-                        associatedDelivery != null
-                            ? _translateStatus(associatedDelivery.status)
-                            : 'Sem entrega',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: chipColor,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    decoration: BoxDecoration(
+                      color: chipColor.withOpacity(0.12),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12),
                       ),
                     ),
-                    const SizedBox(height: 6),
-
-                    // Responsável
-                    Row(
+                    child: Row(
                       children: [
-                        Icon(
-                          Icons.person_outline,
-                          size: 13,
-                          color: Colors.grey[500],
-                        ),
-                        const SizedBox(width: 5),
+                        Icon(Icons.receipt_long, size: 16, color: chipColor),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            order.responsible,
+                            'Nota #${order.orderNumber}',
                             style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[700],
-                              height: 1.3,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: chipColor,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -733,111 +769,328 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                         ),
                       ],
                     ),
-                    const Spacer(),
-
-                    // Data
-                    Row(
-                      children: [
-                        Icon(Icons.schedule, size: 12, color: Colors.grey[400]),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            _formatDate(order.createdAt),
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.grey[500],
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(11),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.max,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Status Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            decoration: BoxDecoration(
+                              color: chipColor.withOpacity(0.14),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: chipColor.withOpacity(0.3),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              associatedDelivery != null
+                                  ? _translateStatus(associatedDelivery.status)
+                                  : 'Sem entrega',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: chipColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 6),
+
+                          // Responsável
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.person_outline,
+                                size: 11,
+                                color: Colors.grey[600],
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  order.responsible,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey[700],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          // Previsão de entrega (se aguardando)
+                          if (associatedDelivery != null &&
+                              (associatedDelivery.status == 'pending' ||
+                                  associatedDelivery.status == 'assigned') &&
+                              _formatDeliveryForecast(associatedDelivery) !=
+                                  null) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_today,
+                                  size: 13,
+                                  color: Colors.blue,
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    _formatDeliveryForecast(
+                                      associatedDelivery,
+                                    )!,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.blue,
+                                      height: 1.3,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+
+                          // Tempo de entrega (se em entrega)
+                          if (associatedDelivery != null &&
+                              associatedDelivery.status == 'dispatched' &&
+                              _formatDeliveryElapsedTime(associatedDelivery) !=
+                                  null) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.timer,
+                                  size: 13,
+                                  color: Colors.orange[600],
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    _formatDeliveryElapsedTime(
+                                      associatedDelivery,
+                                    )!,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.orange[700],
+                                      height: 1.3,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+
+                          // Data de finalização (se finalizado/cancelado)
+                          if (associatedDelivery != null &&
+                              (associatedDelivery.status == 'delivered' ||
+                                  associatedDelivery.status == 'cancelled') &&
+                              associatedDelivery.finishedAt != null &&
+                              associatedDelivery.finishedAt!.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  size: 13,
+                                  color:
+                                      associatedDelivery.status == 'delivered'
+                                      ? Colors.green
+                                      : Colors.red,
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    _formatDate(associatedDelivery.finishedAt),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          associatedDelivery.status ==
+                                              'delivered'
+                                          ? Colors.green
+                                          : Colors.red,
+                                      height: 1.3,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+
+                          const Spacer(),
+
+                          // Data
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.schedule,
+                                size: 12,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  _formatDate(order.createdAt),
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.grey[500],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           );
         }
 
-        // Versão em lista (original)
+        // Versão em lista (compacta e sem redundância)
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          elevation: 2,
+          elevation: 1,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
+            side: BorderSide(
+              color: Theme.of(context).dividerColor.withOpacity(0.2),
+            ),
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
               vertical: 8,
             ),
-            title: Row(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: chipColor.withOpacity(0.14),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.receipt_long, color: chipColor, size: 20),
+            ),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(6),
+                Text(
+                  'Nota #${order.orderNumber}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
                   ),
-                  child: Icon(
-                    Icons.receipt_long,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 18,
-                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Pedido #${order.orderNumber}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.person_outline,
-                                  size: 12,
-                                  color: Colors.grey[600],
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  order.responsible,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.person_outline,
+                      size: 12,
+                      color: Colors.grey[600],
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        order.responsible,
+                        style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ],
             ),
             subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4, left: 34),
-              child: Row(
+              padding: const EdgeInsets.only(top: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.access_time, size: 11, color: Colors.grey[500]),
-                  const SizedBox(width: 4),
-                  Text(
-                    _formatDate(order.createdAt),
-                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 11,
+                        color: Colors.grey[500],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatDate(order.createdAt),
+                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                      ),
+                    ],
                   ),
+                  // Previsão de entrega
+                  if (associatedDelivery != null &&
+                      (associatedDelivery.status == 'pending' ||
+                          associatedDelivery.status == 'assigned') &&
+                      _formatDeliveryForecast(associatedDelivery) != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          size: 11,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Entrega: ${_formatDeliveryForecast(associatedDelivery)!}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  // Tempo de entrega (se em entrega)
+                  if (associatedDelivery != null &&
+                      associatedDelivery.status == 'dispatched' &&
+                      _formatDeliveryElapsedTime(associatedDelivery) !=
+                          null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.timer, size: 11, color: Colors.orange[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatDeliveryElapsedTime(associatedDelivery)!,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1040,6 +1293,8 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
     final deliveryDispatchedAt = associatedDelivery?.dispatchedAt;
     final deliveryFinishedAt = associatedDelivery?.finishedAt;
     final deliveryTeamDriverIds = associatedDelivery?.teamDriverIds ?? [];
+    final deliveryForecastDate = associatedDelivery?.deliveryForecastDate;
+    final deliveryForecastPeriod = associatedDelivery?.deliveryForecastPeriod;
 
     showDialog<void>(
       context: context,
@@ -1268,6 +1523,80 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                                             ?.name ??
                                         '—',
                                   ),
+                              ],
+
+                              // Previsão de entrega (se aguardando)
+                              if ((deliveryStatus == 'pending' ||
+                                      deliveryStatus == 'assigned') &&
+                                  deliveryForecastDate != null &&
+                                  deliveryForecastPeriod != null) ...[
+                                const SizedBox(height: 16),
+                                const Divider(),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Previsão de Entrega',
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.blue.withOpacity(0.2),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Icon(
+                                          Icons.event_available_rounded,
+                                          color: Colors.blue,
+                                          size: 24,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _formatDeliveryForecast(
+                                                    associatedDelivery,
+                                                  ) ??
+                                                  '—',
+                                              style: theme.textTheme.titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Colors.blue,
+                                                  ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'Data e período estimados',
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    color: Colors.blue
+                                                        .withOpacity(0.7),
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ],
 
                               // Timeline de datas
@@ -1877,7 +2206,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                             maxCrossAxisExtent: 240,
                             crossAxisSpacing: 10,
                             mainAxisSpacing: 10,
-                            childAspectRatio: 1.55,
+                            mainAxisExtent: 150,
                           ),
                       padding: const EdgeInsets.all(10),
                       itemCount: filtered.length,
@@ -2137,7 +2466,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                                       maxCrossAxisExtent: 240,
                                       crossAxisSpacing: 10,
                                       mainAxisSpacing: 10,
-                                      childAspectRatio: 1.55,
+                                      mainAxisExtent: 150,
                                     ),
                                 padding: const EdgeInsets.all(10),
                                 itemCount: filtered.length,
@@ -2207,6 +2536,11 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
       elapsedTime = '—';
     }
 
+    // Cor fixa para tempo em entrega: usar a cor do chip "Em Entrega"
+    if (d.status == 'dispatched') {
+      timeColor = _getStatusColor('dispatched');
+    }
+
     return Builder(
       builder: (context) {
         if (_useGridView) {
@@ -2233,137 +2567,36 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                 }
               },
               borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // PRIMARY: Delivery ID
-                    Text(
-                      'Entrega #${d.id.substring(0, 8)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                        letterSpacing: 0.3,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
                     ),
-                    const SizedBox(height: 6),
-
-                    // Status Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.14),
-                        border: Border.all(
-                          color: statusColor.withOpacity(0.3),
-                          width: 0.8,
-                        ),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        _translateStatus(d.status),
-                        style: TextStyle(
-                          color: statusColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.12),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12),
                       ),
                     ),
-                    const SizedBox(height: 6),
-
-                    // Driver/Team info
-                    if (d.teamDriverIds.isNotEmpty)
-                      Row(
-                        children: [
-                          Icon(
-                            d.teamDriverIds.length > 1
-                                ? Icons.group
-                                : Icons.person,
-                            size: 13,
-                            color: Colors.grey[600],
-                          ),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              d.teamDriverIds.length > 1
-                                  ? '${d.teamDriverIds.first} +${d.teamDriverIds.length - 1}'
-                                  : d.teamDriverIds.first,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey[700],
-                                height: 1.3,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      )
-                    else if (driver != null)
-                      Row(
-                        children: [
-                          Icon(Icons.person, size: 13, color: Colors.grey[600]),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              driver.name,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey[700],
-                                height: 1.3,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                    if (d.teamDriverIds.isNotEmpty || driver != null)
-                      const SizedBox(height: 4),
-
-                    // Tempo decorrido (if dispatched)
-                    if (d.dispatchedAt != null)
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.timer_outlined,
-                            size: 13,
-                            color: timeColor,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            elapsedTime,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: timeColor,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                    const Spacer(),
-
-                    // Data criação (footer)
-                    Row(
+                    child: Row(
                       children: [
-                        Icon(Icons.schedule, size: 12, color: Colors.grey[400]),
-                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.local_shipping,
+                          size: 16,
+                          color: statusColor,
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            _formatDate(d.createdAt),
+                            'Entrega #${d.id.substring(0, 8)}',
                             style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.grey[500],
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: statusColor,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -2371,23 +2604,222 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.max,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Status Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.14),
+                              border: Border.all(
+                                color: statusColor.withOpacity(0.3),
+                                width: 0.8,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              _translateStatus(d.status),
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+
+                          // Driver/Team info
+                          if (d.teamDriverIds.isNotEmpty)
+                            Row(
+                              children: [
+                                Icon(
+                                  d.teamDriverIds.length > 1
+                                      ? Icons.group
+                                      : Icons.person,
+                                  size: 13,
+                                  color: Colors.grey[600],
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    d.teamDriverIds.length > 1
+                                        ? '${d.teamDriverIds.first} +${d.teamDriverIds.length - 1}'
+                                        : d.teamDriverIds.first,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey[700],
+                                      height: 1.3,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            )
+                          else if (driver != null)
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.person,
+                                  size: 13,
+                                  color: Colors.grey[600],
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    driver.name,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey[700],
+                                      height: 1.3,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                          if (d.teamDriverIds.isNotEmpty || driver != null)
+                            const SizedBox(height: 4),
+
+                          // Tempo decorrido (if dispatched)
+                          if (d.dispatchedAt != null)
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.timer_outlined,
+                                  size: 13,
+                                  color: timeColor,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  elapsedTime,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: timeColor,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                          // Previsão de entrega (if "Aguardando Envio")
+                          if ((d.status == 'pending' ||
+                                  d.status == 'assigned') &&
+                              _formatDeliveryForecast(d) != null)
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_today,
+                                  size: 13,
+                                  color: Colors.blue,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  _formatDeliveryForecast(d)!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.blue,
+                                    height: 1.3,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+
+                          // Data de finalização (if finalizado/cancelado)
+                          if ((d.status == 'delivered' ||
+                                  d.status == 'cancelled') &&
+                              d.finishedAt != null &&
+                              d.finishedAt!.isNotEmpty)
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  size: 13,
+                                  color: d.status == 'delivered'
+                                      ? Colors.green
+                                      : Colors.red,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  _formatDate(d.finishedAt),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: d.status == 'delivered'
+                                        ? Colors.green
+                                        : Colors.red,
+                                    height: 1.3,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+
+                          const Spacer(),
+
+                          // Data criação (footer)
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.schedule,
+                                size: 12,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  _formatDate(d.createdAt),
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.grey[500],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           );
         } else {
-          // List view: Full ListTile
+          // List view: Compacta e sem redundância
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            elevation: 2,
+            elevation: 1,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
             ),
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
-                vertical: 6,
+                vertical: 8,
               ),
               onTap: () {
                 if (_canShowDeliveryModal(d)) {
@@ -2403,7 +2835,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.15),
+                  color: statusColor.withOpacity(0.14),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -2414,82 +2846,108 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                   size: 20,
                 ),
               ),
-              title: Row(
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Text(
+                    'Entrega #${d.id.substring(0, 8)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (d.teamDriverIds.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Row(
                       children: [
-                        Text(
-                          'Entrega #${d.id.substring(0, 8)}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                        Icon(
+                          d.teamDriverIds.length > 1
+                              ? Icons.group
+                              : Icons.person,
+                          size: 12,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            d.teamDriverIds.length > 1
+                                ? '${d.teamDriverIds.first} +${d.teamDriverIds.length - 1}'
+                                : d.teamDriverIds.first,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[700],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (d.teamDriverIds.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(
-                                d.teamDriverIds.length > 1
-                                    ? Icons.group
-                                    : Icons.person,
-                                size: 12,
-                                color: Colors.grey[600],
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  d.teamDriverIds.length > 1
-                                      ? '${d.teamDriverIds.first} +${d.teamDriverIds.length - 1}'
-                                      : d.teamDriverIds.first,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[700],
-                                    fontWeight: FontWeight.normal,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ] else if (driver != null) ...[
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.person,
-                                size: 12,
-                                color: Colors.grey[600],
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                driver.name,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[700],
-                                  fontWeight: FontWeight.normal,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
                       ],
                     ),
-                  ),
+                  ] else if (driver != null) ...[
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Icon(Icons.person, size: 12, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            driver.name,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[700],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
               subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Row(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.schedule, size: 11, color: Colors.grey[500]),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Criado: ${_formatDate(d.createdAt)}',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    Row(
+                      children: [
+                        Icon(Icons.schedule, size: 11, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Criado: ${_formatDate(d.createdAt)}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
+                    // Previsão de entrega
+                    if ((d.status == 'pending' || d.status == 'assigned') &&
+                        _formatDeliveryForecast(d) != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today,
+                            size: 11,
+                            color: Colors.blue,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Previsão: ${_formatDeliveryForecast(d)!}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -2519,7 +2977,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                           Text(
                             elapsedTime,
                             style: TextStyle(
-                              fontSize: 10,
+                              fontSize: 9,
                               fontWeight: FontWeight.bold,
                               color: timeColor,
                             ),
@@ -2542,13 +3000,13 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                       _translateStatus(d.status),
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Icon(Icons.chevron_right, color: Colors.grey[400]),
+                  Icon(Icons.chevron_right, size: 20, color: Colors.grey[400]),
                 ],
               ),
             ),
@@ -2755,6 +3213,11 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                               _buildDriverInfoWithCallback(
                                 freshDelivery,
                                 freshDriver,
+                                setDialogState,
+                              ),
+                              const Divider(height: 24),
+                              _buildForecastInfoWithCallback(
+                                freshDelivery,
                                 setDialogState,
                               ),
                             ],
@@ -3864,6 +4327,132 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
     );
   }
 
+  Widget _buildForecastInfoWithCallback(
+    DeliveryModel d,
+    void Function(void Function()) updateDialog,
+  ) {
+    final canEdit = d.status != 'delivered' && d.status != 'cancelled';
+    final hasForecast =
+        d.deliveryForecastDate != null && d.deliveryForecastPeriod != null;
+    final dateFormat = DateFormat('dd/MM/yyyy');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.calendar_today, size: 18, color: Colors.blue),
+            const SizedBox(width: 8),
+            const Text(
+              'Previsão de Entrega:',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            const Spacer(),
+            if (canEdit)
+              IconButton(
+                icon: Icon(
+                  hasForecast ? Icons.edit : Icons.add_circle_outline,
+                  size: 20,
+                ),
+                tooltip: hasForecast ? 'Editar previsão' : 'Adicionar previsão',
+                onPressed: () => _showEditForecastDialog(d, updateDialog),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (hasForecast)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue, Colors.blue[600]!],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.event_available,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        dateFormat.format(
+                          DateTime.parse(d.deliveryForecastDate!),
+                        ),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            d.deliveryForecastPeriod == 'manha'
+                                ? Icons.wb_sunny
+                                : Icons.wb_twilight,
+                            size: 14,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            d.deliveryForecastPeriod == 'manha'
+                                ? 'Manhã (08:00 - 12:00)'
+                                : 'Tarde (13:00 - 18:00)',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.withOpacity(0.3)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.grey, size: 18),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Sem previsão definida',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   void _addDriverToTeam(
     DeliveryModel delivery,
     void Function(void Function()) updateDialog,
@@ -4660,6 +5249,315 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
             child: const Text('Cancelar Entrega'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showEditForecastDialog(
+    DeliveryModel delivery,
+    void Function(void Function()) updateDialog,
+  ) {
+    final dateFormat = DateFormat('dd/MM/yyyy');
+    DateTime? selectedDate = delivery.deliveryForecastDate != null
+        ? DateTime.parse(delivery.deliveryForecastDate!)
+        : null;
+    String? selectedPeriod = delivery.deliveryForecastPeriod;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogContext, setModalState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 500),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.blue, Colors.blue[600]!],
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.calendar_today,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Previsão de Entrega',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Defina quando será realizada',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.of(ctx).pop(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Content
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Data
+                        const Text(
+                          'Data da Entrega',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: ctx,
+                              initialDate: selectedDate ?? DateTime.now(),
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(
+                                const Duration(days: 365),
+                              ),
+                            );
+                            if (picked != null) {
+                              setModalState(() {
+                                selectedDate = picked;
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Theme.of(ctx)
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: selectedDate != null
+                                    ? Colors.blue
+                                    : Colors.grey.withOpacity(0.3),
+                                width: selectedDate != null ? 2 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_today,
+                                  color: selectedDate != null
+                                      ? Colors.blue
+                                      : Colors.grey,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    selectedDate != null
+                                        ? dateFormat.format(selectedDate!)
+                                        : 'Selecione a data',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: selectedDate != null
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                      color: selectedDate != null
+                                          ? null
+                                          : Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 16,
+                                  color: Colors.grey,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        // Período
+                        const Text(
+                          'Período de Entrega',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildPeriodCardSmall(
+                                'Manhã',
+                                Icons.wb_sunny,
+                                'manha',
+                                '08:00 - 12:00',
+                                selectedPeriod,
+                                (value) {
+                                  setModalState(() {
+                                    selectedPeriod = value;
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildPeriodCardSmall(
+                                'Tarde',
+                                Icons.wb_twilight,
+                                'tarde',
+                                '13:00 - 18:00',
+                                selectedPeriod,
+                                (value) {
+                                  setModalState(() {
+                                    selectedPeriod = value;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Actions
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: Colors.grey.withOpacity(0.2)),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          child: const Text('Cancelar'),
+                        ),
+                        const SizedBox(width: 12),
+                        FilledButton(
+                          onPressed:
+                              selectedDate != null && selectedPeriod != null
+                              ? () {
+                                  delivery.deliveryForecastDate = selectedDate!
+                                      .toIso8601String();
+                                  delivery.deliveryForecastPeriod =
+                                      selectedPeriod;
+                                  delivery.save();
+                                  Navigator.of(ctx).pop();
+                                  updateDialog(() {});
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Previsão atualizada com sucesso!',
+                                      ),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                  if (mounted) setState(() {});
+                                }
+                              : null,
+                          child: const Text('Salvar'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPeriodCardSmall(
+    String label,
+    IconData icon,
+    String value,
+    String timeRange,
+    String? selectedPeriod,
+    void Function(String) onSelected,
+  ) {
+    final isSelected = selectedPeriod == value;
+
+    return InkWell(
+      onTap: () => onSelected(value),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.blue.withOpacity(0.15)
+              : Colors.grey.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.blue : Colors.grey.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 28, color: isSelected ? Colors.blue : Colors.grey),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.blue : null,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              timeRange,
+              style: TextStyle(
+                fontSize: 11,
+                color: isSelected ? Colors.blue.withOpacity(0.7) : Colors.grey,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -6535,6 +7433,8 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
   final List<String> _selectedDrivers = [];
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  DateTime? _deliveryForecastDate;
+  String? _deliveryForecastPeriod; // 'manha' ou 'tarde'
 
   // Lista fixa de motoristas disponíveis
   final List<String> _availableDrivers = [
@@ -6634,6 +7534,8 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
                       ? 'Selecione as notas para entrega'
                       : _currentStep == 1
                       ? 'Defina a equipe de entrega'
+                      : _currentStep == 2
+                      ? 'Defina a previsão de entrega'
                       : 'Confirme os detalhes',
                   style: TextStyle(
                     fontSize: 13,
@@ -6661,7 +7563,9 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
           Expanded(child: _buildStepLine(0)),
           _buildStepCircle(1, 'Equipe', Icons.group),
           Expanded(child: _buildStepLine(1)),
-          _buildStepCircle(2, 'Confirmar', Icons.check_circle),
+          _buildStepCircle(2, 'Previsão', Icons.calendar_today),
+          Expanded(child: _buildStepLine(2)),
+          _buildStepCircle(3, 'Confirmar', Icons.check_circle),
         ],
       ),
     );
@@ -6737,6 +7641,8 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
       case 1:
         return _buildTeamStep();
       case 2:
+        return _buildForecastStep();
+      case 3:
         return _buildConfirmationStep();
       default:
         return const SizedBox();
@@ -7350,6 +8256,241 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
     );
   }
 
+  Widget _buildForecastStep() {
+    final dateFormat = DateFormat('dd/MM/yyyy');
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Informação
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.primaryContainer.withOpacity(0.35),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.35),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Defina quando a entrega será realizada',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Seleção de data
+          Text(
+            'Data da Entrega',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _deliveryForecastDate ?? DateTime.now(),
+                firstDate: DateTime.now(),
+                lastDate: DateTime.now().add(const Duration(days: 365)),
+              );
+              if (picked != null) {
+                setState(() {
+                  _deliveryForecastDate = picked;
+                });
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _deliveryForecastDate != null
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                  width: _deliveryForecastDate != null ? 2 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today,
+                    color: _deliveryForecastDate != null
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _deliveryForecastDate != null
+                          ? dateFormat.format(_deliveryForecastDate!)
+                          : 'Selecione a data',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: _deliveryForecastDate != null
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                        color: _deliveryForecastDate != null
+                            ? Theme.of(context).colorScheme.onSurface
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+
+          // Seleção de período
+          Text(
+            'Período de Entrega',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildPeriodCard(
+                  'Manhã',
+                  Icons.wb_sunny,
+                  'manha',
+                  '08:00 - 12:00',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildPeriodCard(
+                  'Tarde',
+                  Icons.wb_twilight,
+                  'tarde',
+                  '13:00 - 18:00',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeriodCard(
+    String label,
+    IconData icon,
+    String value,
+    String timeRange,
+  ) {
+    final isSelected = _deliveryForecastPeriod == value;
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _deliveryForecastPeriod = value;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? theme.colorScheme.primaryContainer
+              : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outline.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? theme.colorScheme.primary.withOpacity(0.2)
+                    : theme.colorScheme.surfaceContainerHighest,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 32,
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isSelected
+                    ? theme.colorScheme.onPrimaryContainer
+                    : theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              timeRange,
+              style: TextStyle(
+                fontSize: 12,
+                color: isSelected
+                    ? theme.colorScheme.onPrimaryContainer.withOpacity(0.7)
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (isSelected) ...[
+              const SizedBox(height: 8),
+              Icon(
+                Icons.check_circle,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildConfirmationStep() {
     final orders = _selectedOrderIds
         .map((id) => widget.ordersBox.get(id))
@@ -7563,6 +8704,85 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
               );
             }).toList(),
           ),
+
+          const SizedBox(height: 20),
+
+          // Seção de previsão
+          if (_deliveryForecastDate != null && _deliveryForecastPeriod != null)
+            _buildConfirmationSection(
+              icon: Icons.calendar_today,
+              title: 'Previsão de Entrega',
+              count: 1,
+              color: Colors.blue,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.blue, Colors.blue[600]!],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.event_available,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              DateFormat(
+                                'dd/MM/yyyy',
+                              ).format(_deliveryForecastDate!),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  _deliveryForecastPeriod == 'manha'
+                                      ? Icons.wb_sunny
+                                      : Icons.wb_twilight,
+                                  size: 14,
+                                  color: Colors.white.withOpacity(0.9),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _deliveryForecastPeriod == 'manha'
+                                      ? 'Manhã (08:00 - 12:00)'
+                                      : 'Tarde (13:00 - 18:00)',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.white.withOpacity(0.9),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -7622,6 +8842,8 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
         ? _selectedOrderIds.isNotEmpty
         : _currentStep == 1
         ? _selectedDrivers.isNotEmpty
+        : _currentStep == 2
+        ? _deliveryForecastDate != null && _deliveryForecastPeriod != null
         : true;
 
     return Container(
@@ -7680,7 +8902,7 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
               ),
             ),
           const Spacer(),
-          if (_currentStep < 2)
+          if (_currentStep < 3)
             FilledButton.icon(
               onPressed: canProceed
                   ? () {
@@ -7723,6 +8945,14 @@ class _AddDeliveryModalState extends State<AddDeliveryModal> {
 
     // Salvar a equipe
     delivery.teamDriverIds = List.from(_selectedDrivers);
+
+    // Salvar previsão de entrega
+    if (_deliveryForecastDate != null) {
+      delivery.deliveryForecastDate = _deliveryForecastDate!.toIso8601String();
+    }
+    if (_deliveryForecastPeriod != null) {
+      delivery.deliveryForecastPeriod = _deliveryForecastPeriod;
+    }
 
     // Para compatibilidade, setar o driverId como o primeiro da lista
     final primaryDriverName = _selectedDrivers.first;
