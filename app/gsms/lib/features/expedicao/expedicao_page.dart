@@ -29,6 +29,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
   late TabController _tabController;
   late Timer _timer;
   late ScrollController _entregasScrollController;
+  late TextEditingController _notasSearchController;
   late TextEditingController _emEntregaSearchController;
   late TextEditingController _finalizadasSearchController;
   final Map<String, GlobalKey> _deliveryKeys = {};
@@ -173,7 +174,11 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
       _useGridView = savedViewPref;
     }
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _entregasScrollController = ScrollController();
+    _notasSearchController = TextEditingController();
     _emEntregaSearchController = TextEditingController();
     _finalizadasSearchController = TextEditingController();
 
@@ -250,6 +255,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
     _timer.cancel();
     _tabController.dispose();
     _entregasScrollController.dispose();
+    _notasSearchController.dispose();
     _emEntregaSearchController.dispose();
     _finalizadasSearchController.dispose();
     super.dispose();
@@ -324,6 +330,35 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
           _buildFinalizadasTab(),
         ],
       ),
+      floatingActionButton: _tabController.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) =>
+                      AddOrderModal(box: _ordersBox, sellersBox: _sellersBox),
+                );
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Adicionar Nota'),
+            )
+          : _tabController.index == 1
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AddDeliveryModal(
+                    ordersBox: _ordersBox,
+                    deliveriesBox: _deliveriesBox,
+                    driversBox: _driversBox,
+                    sellersBox: _sellersBox,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Adicionar Entrega'),
+            )
+          : null,
     );
   }
 
@@ -361,6 +396,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
               Expanded(
                 flex: 2,
                 child: TextField(
+                  controller: _notasSearchController,
                   decoration: InputDecoration(
                     hintText: 'Buscar nota ou responsável...',
                     hintStyle: TextStyle(
@@ -649,20 +685,6 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
                       },
                     );
             },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: FloatingActionButton.extended(
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) =>
-                    AddOrderModal(box: _ordersBox, sellersBox: _sellersBox),
-              );
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('Adicionar Nota'),
           ),
         ),
       ],
@@ -2297,24 +2319,6 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
             },
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: FloatingActionButton.extended(
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) => AddDeliveryModal(
-                  ordersBox: _ordersBox,
-                  deliveriesBox: _deliveriesBox,
-                  driversBox: _driversBox,
-                  sellersBox: _sellersBox,
-                ),
-              );
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('Adicionar Entrega'),
-          ),
-        ),
       ],
     );
   }
@@ -3081,20 +3085,16 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
   // Valida se uma entrega pode ser exibida em modal
   bool _canShowDeliveryModal(DeliveryModel? delivery) {
     if (delivery == null) {
-      debugPrint('❌ Entrega é nula');
       return false;
     }
     if (delivery.id.isEmpty) {
-      debugPrint('❌ ID da entrega está vazio');
       return false;
     }
     // Verifica se a entrega ainda existe na Hive box
     final existsInBox = _deliveriesBox.get(delivery.id) != null;
     if (!existsInBox) {
-      debugPrint('❌ Entrega ${delivery.id} não existe mais na Hive box');
       return false;
     }
-    debugPrint('✅ Entrega ${delivery.id} validada para exibição');
     return true;
   }
 
@@ -3536,7 +3536,7 @@ class _ExpedicaoPageState extends State<ExpedicaoPage>
     final phases = [
       {
         'status': 'pending',
-        'label': 'Criada',
+        'label': 'Agendada',
         'icon': Icons.note_add,
         'date': createdDate,
       },
